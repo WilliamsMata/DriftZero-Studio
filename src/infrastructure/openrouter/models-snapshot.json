@@ -1,0 +1,66 @@
+{
+  "imageModels": [
+    {
+      "id": "google/gemini-2.5-flash-image",
+      "label": "Gemini 2.5 Flash Image",
+      "provider": "Google",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "estimatedCostPerImageUsd": 0.039
+    },
+    {
+      "id": "bytedance-seed/seedream-4.5",
+      "label": "Seedream 4.5",
+      "provider": "ByteDance Seed",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 10,
+      "estimatedCostPerImageUsd": 0.03
+    },
+    {
+      "id": "black-forest-labs/flux.2-klein-4b",
+      "label": "FLUX.2 Klein 4B",
+      "provider": "Black Forest Labs",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 4,
+      "estimatedCostPerImageUsd": 0.014
+    }
+  ],
+  "videoModels": [
+    {
+      "id": "bytedance/seedance-1-5-pro",
+      "label": "Seedance 1.5 Pro",
+      "provider": "ByteDance",
+      "supportedAspectRatios": ["16:9", "9:16", "1:1"],
+      "supportsInputReferences": false,
+      "maxInputReferences": 0,
+      "supportedDurations": [4, 5],
+      "supportsLastFrame": false,
+      "estimatedCostPerSecondUsd": 0.05
+    },
+    {
+      "id": "bytedance/seedance-2.0-fast",
+      "label": "Seedance 2.0 Fast",
+      "provider": "ByteDance",
+      "supportedAspectRatios": ["16:9", "9:16", "1:1"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 4,
+      "supportedDurations": [4, 5],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.03
+    },
+    {
+      "id": "google/veo-3.1-lite",
+      "label": "Veo 3.1 Lite",
+      "provider": "Google",
+      "supportedAspectRatios": ["16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "supportedDurations": [4, 5],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.1
+    }
+  ]
+}

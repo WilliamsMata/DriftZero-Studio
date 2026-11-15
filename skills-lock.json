@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "skills": {
+    "openrouter-images": {
+      "source": "OpenRouterTeam/skills",
+      "sourceType": "github",
+      "skillPath": "skills/openrouter-images/SKILL.md",
+      "computedHash": "e2cc5315cf05ac714018ce8f237c3ec444ed2e714c06af7ac9b1d48804dcf70c"
+    },
+    "openrouter-models": {
+      "source": "OpenRouterTeam/skills",
+      "sourceType": "github",
+      "skillPath": "skills/openrouter-models/SKILL.md",
+      "computedHash": "0d6c3c19a3f07bcd568701fed22fb97babc2d0387b42aeaa7900ddd6b0f1a4a0"
+    },
+    "openrouter-typescript-sdk": {
+      "source": "OpenRouterTeam/skills",
+      "sourceType": "github",
+      "skillPath": "skills/openrouter-typescript-sdk/SKILL.md",
+      "computedHash": "162dd6de9156fbaba702a8767b61598283d29a9ee3383988e485e812b826fdd0"
+    },
+    "openrouter-video": {
+      "source": "OpenRouterTeam/skills",
+      "sourceType": "github",
+      "skillPath": "skills/openrouter-video/SKILL.md",
+      "computedHash": "3716cbd868e600f044f4f1765baa2a27afb58bebc8533d4062c977568e3414d6"
+    },
+    "shadcn": {
+      "source": "shadcn-ui/ui",
+      "sourceType": "github",
+      "skillPath": "skills/shadcn/SKILL.md",
+      "computedHash": "388962d16c7a4f13aaeee0d8f128e50a87df8553d42ef7988c39c0e1c74a40e8"
+    }
+  }
+}
