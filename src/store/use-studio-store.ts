@@ -109,6 +109,7 @@ type CatalogStatus = "idle" | "loading" | "ready" | "error";
 
 export type MobileStudioTab = "create" | "storyboard" | "player" | "finops";
 export type TabletStudioTab = "storyboard" | "player";
+export type MobileStudioDrawer = "preset" | "model" | "steps" | null;
 
 interface StudioState {
   mode: ExecutionMode;
@@ -140,6 +141,8 @@ interface StudioState {
   activePlayerShot: number;
   mobileTab: MobileStudioTab;
   tabletRightTab: TabletStudioTab;
+  mobileDrawer: MobileStudioDrawer;
+  tourRequestId: number;
 
   loadInitialCatalog: () => Promise<void>;
   refreshCatalog: () => Promise<void>;
@@ -169,6 +172,9 @@ interface StudioState {
   setActivePlayerShot: (shot: number) => void;
   setMobileTab: (tab: MobileStudioTab) => void;
   setTabletRightTab: (tab: TabletStudioTab) => void;
+  openMobileDrawer: (drawer: Exclude<MobileStudioDrawer, null>) => void;
+  closeMobileDrawer: () => void;
+  requestTour: () => void;
   updateAdCopy: (field: keyof AdCopy, value: string) => void;
 }
 
@@ -384,6 +390,7 @@ function presetState(preset: ShowcasePreset): Partial<StudioState> {
     activePlayerShot: 1,
     mobileTab: "storyboard",
     tabletRightTab: "storyboard",
+    mobileDrawer: null,
   };
 }
 
@@ -748,6 +755,8 @@ export const useStudioStore = create<StudioState>()((set, get) => {
     activePlayerShot: 1,
     mobileTab: "create",
     tabletRightTab: "storyboard",
+    mobileDrawer: null,
+    tourRequestId: 0,
 
     loadInitialCatalog: async () => {
       const currentStatus = get().catalogStatus;
@@ -1365,6 +1374,18 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
     setTabletRightTab: (tabletRightTab) => {
       set({ tabletRightTab });
+    },
+
+    openMobileDrawer: (mobileDrawer) => {
+      set({ mobileDrawer });
+    },
+
+    closeMobileDrawer: () => {
+      set({ mobileDrawer: null });
+    },
+
+    requestTour: () => {
+      set((state) => ({ tourRequestId: state.tourRequestId + 1 }));
     },
 
     updateAdCopy: (field, value) => {

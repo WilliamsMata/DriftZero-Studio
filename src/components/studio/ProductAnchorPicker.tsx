@@ -158,7 +158,10 @@ export function ProductAnchorPicker({
   const uploadIconClassName = isTouch ? "size-4" : "size-3.5";
 
   return (
-    <section className={cn("space-y-3", className)}>
+    <section
+      data-tour="product-anchor"
+      className={cn("space-y-3", className)}
+    >
       {showHeading ? (
         <SectionHeading
           icon={<Package className="size-3.5" />}

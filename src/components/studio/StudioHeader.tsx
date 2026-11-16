@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useStudioStore } from "@/store/use-studio-store";
+import { StudioTourTrigger } from "@/components/tour/StudioTourTrigger";
 import {
   TOTAL_MEDIA_BUDGET_USD,
   formatUsd,
@@ -141,7 +142,10 @@ export function StudioHeader() {
 
         <div className="hidden h-8 w-px bg-white/10 lg:block" />
 
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <div
+          data-tour="showcase-presets"
+          className="flex min-w-0 flex-wrap items-center gap-1.5"
+        >
           <span className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
             Showcase
           </span>
@@ -219,6 +223,8 @@ export function StudioHeader() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2.5">
+          <StudioTourTrigger />
+
           <div
             role="group"
             aria-label="Execution mode for the next run"

@@ -140,7 +140,10 @@ export function ModelCapabilitiesSection({
   );
 
   return (
-    <section className={cn("space-y-3", className)}>
+    <section
+      data-tour="model-capabilities"
+      className={cn("space-y-3", className)}
+    >
       {showHeading ? (
         <SectionHeading
           icon={<Layers className="size-3.5" />}

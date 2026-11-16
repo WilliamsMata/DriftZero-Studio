@@ -89,7 +89,10 @@ export function CreativeDirectionControls({
   const controlHeight = isTouch ? "h-11" : "h-9";
 
   return (
-    <section className={cn("space-y-3", className)}>
+    <section
+      data-tour="creative-direction"
+      className={cn("space-y-3", className)}
+    >
       {showHeading ? (
         <SectionHeading
           icon={<Sparkles className="size-3.5" />}

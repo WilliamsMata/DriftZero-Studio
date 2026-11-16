@@ -2,7 +2,6 @@
 
 import {
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import {
@@ -36,7 +35,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
-import { useStudioStore, type MobileStudioTab } from "@/store/use-studio-store";
+import { useStudioStore, type MobileStudioDrawer, type MobileStudioTab } from "@/store/use-studio-store";
 import type { ExecutionMode } from "@/domain/entities/campaign";
 import { ProductAnchorPicker } from "@/components/studio/ProductAnchorPicker";
 import { CreativeDirectionControls } from "@/components/studio/CreativeDirectionControls";
@@ -58,6 +57,7 @@ import {
   useStudioBudgetSummary,
   useStudioCostEstimate,
 } from "@/components/studio/studio-primitives";
+import { StudioTourTrigger } from "@/components/tour/StudioTourTrigger";
 import {
   STEP_META,
   applyExecutionModeToEstimate,
@@ -427,7 +427,10 @@ function MobileActionBar({
   const rerunLabel = campaign ? "Re-run" : "Run Full Pipeline";
 
   return (
-    <div className="shrink-0 border-t border-white/10 bg-background/95 px-3 py-2 backdrop-blur">
+    <div
+      data-tour="execution-pipeline"
+      className="shrink-0 border-t border-white/10 bg-background/95 px-3 py-2 backdrop-blur"
+    >
       {busy ? (
         <div className="flex items-center gap-2">
           <div
@@ -583,11 +586,26 @@ export function MobileStudioShell() {
   const execution = useStudioExecution();
   const { totalUsd, budgetCap } = useStudioBudgetSummary();
 
-  const [presetDrawerOpen, setPresetDrawerOpen] = useState(false);
-  const [modelDrawerOpen, setModelDrawerOpen] = useState(false);
-  const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
+  const mobileDrawer = useStudioStore((state) => state.mobileDrawer);
+  const openMobileDrawer = useStudioStore((state) => state.openMobileDrawer);
+  const closeMobileDrawer = useStudioStore((state) => state.closeMobileDrawer);
 
   const busy = isStudioBusy(activeStep);
+
+  function handleDrawerOpenChange(
+    drawer: Exclude<MobileStudioDrawer, null>,
+    open: boolean,
+  ) {
+    if (open) {
+      openMobileDrawer(drawer);
+      return;
+    }
+
+    // A drawer's exit callback must not close a newer drawer that replaced it.
+    if (useStudioStore.getState().mobileDrawer === drawer) {
+      closeMobileDrawer();
+    }
+  }
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
@@ -607,12 +625,15 @@ export function MobileStudioShell() {
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-1">
+          <StudioTourTrigger variant="mobile" />
+
           <button
             type="button"
-            onClick={() => setPresetDrawerOpen(true)}
+            data-tour="showcase-presets"
+            onClick={() => openMobileDrawer("preset")}
             disabled={busy}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 text-[11px] font-medium text-foreground disabled:opacity-50"
+            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 text-[11px] font-medium text-foreground disabled:opacity-50"
           >
             <span
               className={cn(
@@ -634,10 +655,13 @@ export function MobileStudioShell() {
             aria-label={`Open FinOps ledger. ${formatUsd(
               totalUsd,
             )} spent of ${formatUsd(budgetCap)}.`}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 font-mono text-[10px] font-medium text-foreground"
+            className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-2.5 font-mono text-[10px] font-medium text-foreground"
           >
             <Wallet className="size-3 text-emerald-300" />
-            {formatUsd(totalUsd)} / {formatUsd(budgetCap)}
+            <span>{formatUsd(totalUsd)}</span>
+            <span className="hidden text-muted-foreground min-[430px]:inline">
+              / {formatUsd(budgetCap)}
+            </span>
           </button>
         </div>
       </header>
@@ -653,13 +677,13 @@ export function MobileStudioShell() {
             <Separator className="bg-white/5" />
             <CreativeDirectionControls variant="touch" />
             <ProgressiveDisclosureEngineCard
-              onConfigure={() => setModelDrawerOpen(true)}
+              onConfigure={() => openMobileDrawer("model")}
             />
           </div>
         ) : null}
 
         {mobileTab === "storyboard" ? (
-          <div className="space-y-3 py-4">
+          <div data-tour="storyboard-qa" className="space-y-3 py-4">
             <DirectorBriefCard variant="mobile" className="mx-4" />
             {campaign === null ? (
               <div className="mx-4 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-6 text-center">
@@ -699,15 +723,15 @@ export function MobileStudioShell() {
       <MobileActionBar
         execution={execution}
         onWatchAd={() => setMobileTab("player")}
-        onOpenSteps={() => setStepsDrawerOpen(true)}
+        onOpenSteps={() => openMobileDrawer("steps")}
       />
       <MobileBottomNav />
 
       <LiveRunDialog execution={execution} />
 
       <Drawer
-        open={presetDrawerOpen}
-        onOpenChange={setPresetDrawerOpen}
+        open={mobileDrawer === "preset"}
+        onOpenChange={(open) => handleDrawerOpenChange("preset", open)}
         showSwipeHandle
       >
         <DrawerContent className="max-h-[88dvh]">
@@ -793,7 +817,7 @@ export function MobileStudioShell() {
                     aria-pressed={active}
                     onClick={() => {
                       loadPreset(preset.id);
-                      setPresetDrawerOpen(false);
+                      closeMobileDrawer();
                     }}
                     className={cn(
                       "flex min-h-14 w-full items-start gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-50",
@@ -841,7 +865,7 @@ export function MobileStudioShell() {
           <DrawerFooter className="border-t border-white/10 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <Button
               type="button"
-              onClick={() => setPresetDrawerOpen(false)}
+              onClick={closeMobileDrawer}
               className="min-h-11 bg-amber-300 text-zinc-950 hover:bg-amber-200"
             >
               Done
@@ -851,8 +875,8 @@ export function MobileStudioShell() {
       </Drawer>
 
       <Drawer
-        open={modelDrawerOpen}
-        onOpenChange={setModelDrawerOpen}
+        open={mobileDrawer === "model"}
+        onOpenChange={(open) => handleDrawerOpenChange("model", open)}
         showSwipeHandle
       >
         <DrawerContent className="max-h-[90dvh]">
@@ -870,7 +894,7 @@ export function MobileStudioShell() {
           <DrawerFooter className="border-t border-white/10 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <Button
               type="button"
-              onClick={() => setModelDrawerOpen(false)}
+              onClick={closeMobileDrawer}
               className="min-h-11 bg-amber-300 text-zinc-950 hover:bg-amber-200"
             >
               Done
@@ -880,8 +904,8 @@ export function MobileStudioShell() {
       </Drawer>
 
       <Drawer
-        open={stepsDrawerOpen}
-        onOpenChange={setStepsDrawerOpen}
+        open={mobileDrawer === "steps"}
+        onOpenChange={(open) => handleDrawerOpenChange("steps", open)}
         showSwipeHandle
       >
         <DrawerContent className="max-h-[88dvh]">
@@ -937,7 +961,7 @@ export function MobileStudioShell() {
           <DrawerFooter className="border-t border-white/10 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <Button
               type="button"
-              onClick={() => setStepsDrawerOpen(false)}
+              onClick={closeMobileDrawer}
               className="min-h-11 bg-amber-300 text-zinc-950 hover:bg-amber-200"
             >
               Done

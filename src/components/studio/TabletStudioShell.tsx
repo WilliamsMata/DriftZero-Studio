@@ -30,6 +30,7 @@ import { CommercialPlayerStage } from "@/components/studio/CommercialPlayerStage
 import { FinOpsLedgerCard } from "@/components/studio/FinOpsLedgerCard";
 import { useStudioStore } from "@/store/use-studio-store";
 import type { ExecutionMode } from "@/domain/entities/campaign";
+import { StudioTourTrigger } from "@/components/tour/StudioTourTrigger";
 import {
   formatUsd,
   isStudioBusy,
@@ -91,7 +92,7 @@ function TabletStoryboard() {
       .length ?? 0;
 
   return (
-    <div className="space-y-3 p-3">
+    <div data-tour="storyboard-qa" className="space-y-3 p-3">
       <DirectorBriefCard />
 
       {campaign === null ? (
@@ -213,30 +214,34 @@ function TabletTopBar() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <Select
-            value={activePresetId}
-            items={presetItems}
-            disabled={busy || presets.length === 0}
-            onValueChange={(value) => {
-              if (typeof value === "string" && value !== "") {
-                loadPreset(value);
-              }
-            }}
-          >
-            <SelectTrigger
-              aria-label="Load a showcase preset"
-              className="h-11 min-w-[164px] bg-white/[0.02] text-[12px] data-[size=default]:h-11"
+          <div data-tour="showcase-presets" className="shrink-0">
+            <Select
+              value={activePresetId}
+              items={presetItems}
+              disabled={busy || presets.length === 0}
+              onValueChange={(value) => {
+                if (typeof value === "string" && value !== "") {
+                  loadPreset(value);
+                }
+              }}
             >
-              <SelectValue placeholder="Showcase preset" />
-            </SelectTrigger>
-            <SelectContent>
-              {presets.map((preset) => (
-                <SelectItem key={preset.id} value={preset.id}>
-                  {preset.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                aria-label="Load a showcase preset"
+                className="h-11 min-w-[164px] bg-white/[0.02] text-[12px] data-[size=default]:h-11"
+              >
+                <SelectValue placeholder="Showcase preset" />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <StudioTourTrigger variant="tablet" />
 
           <div
             role="group"

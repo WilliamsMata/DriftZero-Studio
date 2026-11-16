@@ -390,6 +390,7 @@ export function ExecutionControls({
 
   return (
     <Card
+      data-tour="execution-pipeline"
       className={cn(
         "shrink-0 gap-0 overflow-hidden border-white/5 bg-card/85 py-0 ring-1 ring-white/10 backdrop-blur-sm",
         className,

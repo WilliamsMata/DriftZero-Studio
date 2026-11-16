@@ -6,6 +6,7 @@ import { DesktopStudioShell } from "@/components/studio/DesktopStudioShell";
 import { MobileStudioShell } from "@/components/studio/MobileStudioShell";
 import { StudioBootSplash } from "@/components/studio/StudioBootSplash";
 import { TabletStudioShell } from "@/components/studio/TabletStudioShell";
+import { StudioTourController } from "@/components/tour/StudioTourController";
 import {
   useHasMounted,
   useViewportTier,
@@ -51,6 +52,8 @@ export default function Home() {
       ) : (
         <StudioBootSplash />
       )}
+
+      <StudioTourController />
     </TooltipProvider>
   );
 }

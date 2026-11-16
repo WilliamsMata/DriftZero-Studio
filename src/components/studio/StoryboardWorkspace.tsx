@@ -55,7 +55,12 @@ export function StoryboardWorkspace() {
       .length ?? 0;
 
   return (
-    <div id="storyboard" tabIndex={-1} className="space-y-4 outline-none">
+    <div
+      id="storyboard"
+      data-tour="storyboard-qa"
+      tabIndex={-1}
+      className="space-y-4 outline-none"
+    >
       <DirectorBriefCard />
 
       {campaign === null ? (

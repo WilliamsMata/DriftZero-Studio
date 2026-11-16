@@ -126,6 +126,7 @@ export function FinOpsLedgerCard({
 
   return (
     <Card
+      data-tour="finops-ledger"
       className={cn(
         "gap-0 overflow-hidden border-white/5 bg-card/70 py-0 ring-1 ring-white/10 backdrop-blur-sm",
         className,
