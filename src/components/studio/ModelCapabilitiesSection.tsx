@@ -14,6 +14,7 @@ import {
   Timer,
   TriangleAlert,
   Type,
+  Volume2,
 } from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
@@ -459,6 +460,21 @@ export function ModelCapabilitiesSection({
                 ? `Max ${videoModel.maxInputReferences}`
                 : "None"}
             </Badge>
+            {videoModel.audioMode === "optional" ||
+            videoModel.audioMode === "always" ? (
+              <Badge
+                variant="outline"
+                className={cn(
+                  CAPABILITY_BADGE_CLASS,
+                  "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200/80",
+                )}
+              >
+                <Volume2 className="size-2.5" />
+                {videoModel.audioMode === "always"
+                  ? "Audio: Always On"
+                  : "Audio: Included"}
+              </Badge>
+            ) : null}
             <Badge variant="outline" className={CAPABILITY_BADGE_CLASS}>
               <Coins className="size-2.5" />
               {formatCost(
