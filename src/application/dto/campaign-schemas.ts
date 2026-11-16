@@ -192,6 +192,19 @@ export const generateKeyframesRequestSchema = z.object({
     .min(0)
     .max(MAX_VISION_QA_RETRIES)
     .optional(),
+  /**
+   * Optional subset of shots to generate in this request. The studio sends one
+   * request per shot so each serverless invocation stays well below the
+   * platform's maximum function duration. Omit to generate every shot.
+   */
+  shotIndexes: z
+    .array(shotIndexSchema)
+    .min(1)
+    .max(MAX_SHOT_COUNT)
+    .refine((indexes) => new Set(indexes).size === indexes.length, {
+      message: 'Shot indexes must be unique within a keyframe request.',
+    })
+    .optional(),
 });
 
 export const submitVideosRequestSchema = z.object({

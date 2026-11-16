@@ -6,6 +6,9 @@ import { createMediaProviders } from '@/infrastructure/config/provider-factory';
 import { resolveModelCatalog } from '@/infrastructure/openrouter/model-catalog';
 import { jsonOk, toErrorResponse } from '../../_lib/http';
 
+/** Live submissions upload frames to Blob before contacting OpenRouter. */
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   try {
     const body = submitVideosRequestSchema.parse(await request.json());

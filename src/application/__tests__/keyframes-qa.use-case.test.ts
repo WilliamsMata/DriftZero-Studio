@@ -293,6 +293,64 @@ describe('GenerateKeyframesWithQaUseCase', () => {
     );
   });
 
+  it('generates only the requested shot and preserves the other results', async () => {
+    const image = new FakeImageAdapter();
+    const visionQa = new HighFidelityVisionQaAdapter();
+    const useCase = new GenerateKeyframesWithQaUseCase({
+      image,
+      visionQa,
+      storage: new FakeStorageAdapter(),
+      catalog,
+    });
+
+    const campaign = createCampaign();
+    campaign.results[0] = {
+      ...campaign.results[0],
+      keyframeUrl: '/generated/existing-shot-1.jpeg',
+      fidelityScore: 8,
+      qaFeedback: 'Previously generated.',
+    };
+
+    const output = await useCase.execute({
+      campaign,
+      imageModel: imageModel.id,
+      visionModel: visionModel.id,
+      maxRetries: 1,
+      shotIndexes: [2],
+    });
+
+    expect(image.prompts).toHaveLength(1);
+    expect(image.prompts[0]).toContain('Shot 2 (lifestyle-context)');
+    expect(output.results).toHaveLength(3);
+    expect(output.results[0]?.keyframeUrl).toBe(
+      '/generated/existing-shot-1.jpeg',
+    );
+    expect(output.results[1]?.keyframeUrl).toBe('/fixtures/generated-1.jpeg');
+    expect(output.results[2]?.keyframeUrl).toBe('');
+    expect(output.campaign.results).toHaveLength(3);
+    expect(
+      output.ledger.entries.filter((entry) => entry.step === 'image'),
+    ).toHaveLength(1);
+  });
+
+  it('rejects shot indexes that are not part of the campaign', async () => {
+    const useCase = new GenerateKeyframesWithQaUseCase({
+      image: new FakeImageAdapter(),
+      visionQa: new HighFidelityVisionQaAdapter(),
+      storage: new FakeStorageAdapter(),
+      catalog,
+    });
+
+    await expect(
+      useCase.execute({
+        campaign: createCampaign(),
+        imageModel: imageModel.id,
+        visionModel: visionModel.id,
+        shotIndexes: [4],
+      }),
+    ).rejects.toThrow(/not part of this campaign/);
+  });
+
   it('runs the initial keyframe wave in parallel', async () => {
     const image = new TrackingImageAdapter();
     const visionQa = new HighFidelityVisionQaAdapter();

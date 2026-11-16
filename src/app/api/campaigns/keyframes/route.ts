@@ -8,6 +8,13 @@ import {
 } from '@/infrastructure/openrouter/model-catalog';
 import { jsonOk, toErrorResponse } from '../../_lib/http';
 
+/**
+ * Keyframe requests are intentionally scoped to a subset of shots (normally
+ * one) so a single invocation stays well below the hosting platform's maximum
+ * function duration. The studio orchestrates the full batch client-side.
+ */
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   try {
     const body = generateKeyframesRequestSchema.parse(await request.json());
@@ -26,6 +33,7 @@ export async function POST(request: NextRequest) {
       imageModel: body.imageModel,
       visionModel: body.visionModel ?? getDefaultVisionQaModelId(),
       maxRetries: body.maxRetries,
+      shotIndexes: body.shotIndexes,
     });
 
     return jsonOk(output);

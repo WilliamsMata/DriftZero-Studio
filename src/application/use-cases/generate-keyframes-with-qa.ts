@@ -45,6 +45,12 @@ export interface GenerateKeyframesInput {
   imageModel: string;
   visionModel: string;
   maxRetries?: number;
+  /**
+   * Optional subset of shot indexes to generate. The studio calls this use
+   * case once per shot so no single HTTP request has to outlive the hosting
+   * platform's function duration limit. Omit to generate every shot.
+   */
+  shotIndexes?: readonly number[];
 }
 
 export interface GenerateKeyframesOutput {
@@ -189,17 +195,34 @@ export class GenerateKeyframesWithQaUseCase {
     });
 
     const allowedRetries = clampRetries(input.maxRetries);
-    const orderedShots = [...campaign.shots].sort(
+    const allShots = [...campaign.shots].sort(
       (left, right) => left.index - right.index,
     );
 
-    orderedShots.forEach((shot, position) => {
+    allShots.forEach((shot, position) => {
       if (shot.index !== position + 1) {
         throw new InvalidWorkflowStateError(
           'Campaign shots must use sequential indexes starting at 1.',
         );
       }
     });
+
+    let orderedShots = allShots;
+
+    if (input.shotIndexes !== undefined) {
+      const requested = new Set(input.shotIndexes);
+      const unknownIndexes = [...requested].filter(
+        (index) => !allShots.some((shot) => shot.index === index),
+      );
+
+      if (unknownIndexes.length > 0) {
+        throw new InvalidWorkflowStateError(
+          `Shots ${unknownIndexes.join(', ')} are not part of this campaign.`,
+        );
+      }
+
+      orderedShots = allShots.filter((shot) => requested.has(shot.index));
+    }
 
     const estimatedBatchUsd = roundUsd(
       (imageModel.estimatedCostPerImageUsd + estimatedVisionQaUsd) *
@@ -269,7 +292,7 @@ export class GenerateKeyframesWithQaUseCase {
       retryAttempts.map((attempt) => [attempt.shot.index, attempt]),
     );
 
-    const results: ShotResult[] = orderedShots.map((shot) => {
+    const generatedResults: ShotResult[] = orderedShots.map((shot) => {
       const initial = initialByIndex.get(shot.index);
 
       if (!initial) {
@@ -292,6 +315,29 @@ export class GenerateKeyframesWithQaUseCase {
         videoStatus: 'idle',
         videoProgress: 0,
       };
+    });
+
+    // Subset requests (one shot per HTTP call) must still return a complete
+    // campaign: keep previously generated results untouched and only replace
+    // the shots handled by this invocation.
+    const resultByIndex = new Map(
+      campaign.results.map((result) => [result.shotIndex, result]),
+    );
+
+    generatedResults.forEach((result) => {
+      resultByIndex.set(result.shotIndex, result);
+    });
+
+    const results: ShotResult[] = allShots.map((shot) => {
+      const result = resultByIndex.get(shot.index);
+
+      if (!result) {
+        throw new InvalidWorkflowStateError(
+          `Shot ${shot.index} is missing its keyframe result.`,
+        );
+      }
+
+      return result;
     });
 
     const updatedCampaign: CampaignState = {

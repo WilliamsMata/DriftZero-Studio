@@ -493,9 +493,9 @@ export const useStudioStore = create<StudioState>()((set, get) => {
   async function generateKeyframesStep(
     epoch: number,
   ): Promise<CampaignState> {
-    const campaign = get().campaign;
+    const initialCampaign = get().campaign;
 
-    if (!campaign) {
+    if (!initialCampaign) {
       throw new Error(
         "Plan the campaign before generating keyframes. Run step 1 first.",
       );
@@ -503,23 +503,42 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
     set({ activeStep: "keyframes", errorMessage: null });
 
-    const payload = await requestJson<CampaignResponse>(
-      "/api/campaigns/keyframes",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          campaign,
-          imageModel: get().selectedImageModel,
-          visionModel: get().selectedVisionModel,
-          // Hard product rule: Vision QA may retry at most once per shot.
-          maxRetries: 1,
-        }),
-      },
+    const imageModel = get().selectedImageModel;
+    const visionModel = get().selectedVisionModel;
+    const orderedShots = [...initialCampaign.shots].sort(
+      (left, right) => left.index - right.index,
     );
 
-    assertActive(epoch);
-    set({ campaign: payload.campaign, activeStep: "idle" });
-    return payload.campaign;
+    let latest = initialCampaign;
+
+    // One request per shot: each invocation stays far below the 300s
+    // serverless duration limit, and the UI paints each keyframe as soon as it
+    // lands instead of waiting for the whole batch to finish.
+    for (const shot of orderedShots) {
+      assertActive(epoch);
+
+      const payload = await requestJson<CampaignResponse>(
+        "/api/campaigns/keyframes",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            campaign: latest,
+            imageModel,
+            visionModel,
+            // Hard product rule: Vision QA may retry at most once per shot.
+            maxRetries: 1,
+            shotIndexes: [shot.index],
+          }),
+        },
+      );
+
+      assertActive(epoch);
+      latest = payload.campaign;
+      set({ campaign: latest });
+    }
+
+    set({ activeStep: "idle" });
+    return latest;
   }
 
   async function submitVideosStep(epoch: number): Promise<CampaignState> {
