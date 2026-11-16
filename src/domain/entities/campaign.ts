@@ -1,3 +1,5 @@
+import type { ShotRole } from './shot-sequence';
+
 export type ExecutionMode = 'mock' | 'hybrid' | 'live';
 export type AspectRatio = '9:16' | '16:9' | '1:1';
 export type BrandTone = 'luxury-editorial' | 'tiktok-ugc' | 'minimalist-studio';
@@ -15,19 +17,27 @@ export interface AdCopy {
 }
 
 export interface ShotPlan {
-  index: 1 | 2 | 3;
-  role: 'hero-packshot' | 'lifestyle-context' | 'macro-finale';
+  index: number;
+  role: ShotRole;
   title: string;
+  /**
+   * Scene, camera, lighting, and mood from the creative director. The final
+   * image prompt is composed with productDna and fidelity rules at generation
+   * time; see `buildKeyframePrompt`.
+   */
   imagePrompt: string;
+  /** Camera motion only. Identity rules are appended at video submission. */
   videoMotionPrompt: string;
 }
 
 export interface ShotResult {
-  shotIndex: 1 | 2 | 3;
+  shotIndex: number;
   keyframeUrl: string;
   fidelityScore: number;
   qaFeedback: string;
   wasRetried: boolean;
+  /** Exact prompt sent to the image model, including the identity lock. */
+  imagePromptUsed?: string;
   videoJobId?: string;
   videoStatus: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
   videoProgress: number;

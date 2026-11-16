@@ -22,8 +22,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - `MAX_VISION_QA_RETRIES` MUST NEVER exceed `1` per shot.
 
 ## 3. OpenRouter Media Integration Rules
-- **Images (`POST https://openrouter.ai/api/v1/images`)**: Returns `data[0].b64_json` and `usage.cost`. Always pass product anchor reference(s) via `input_references` when supported by the selected model.
-- **Videos (`POST https://openrouter.ai/api/v1/videos`)**: Asynchronous (`jobId` -> polling). `frame_images` (`first_frame` / `last_frame`) MUST be public HTTPS URLs (`200 OK`, `Content-Type: image/...`) — never `localhost` or `data:` URIs. In `live` mode, persist keyframes via `AssetStoragePort` before submitting video jobs.
+- **Images (`POST https://openrouter.ai/api/v1/images`)**: Returns `data[0].b64_json` and `usage.cost`. Always pass product anchor reference(s) via `input_references` when supported by the selected model. NEVER send raw LLM output as the image prompt: compose it with `buildKeyframePrompt` (creative direction + `productDna` + identity rules + tone + frame).
+- **Videos (`POST https://openrouter.ai/api/v1/videos`)**: Asynchronous (`jobId` -> polling). `frame_images` (`first_frame` / `last_frame`) MUST be public HTTPS URLs (`200 OK`, `Content-Type: image/...`) — never `localhost` or `data:` URIs. In `live` mode, persist keyframes via `AssetStoragePort` before submitting video jobs. Motion prompts MUST go through `buildVideoMotionPrompt` to forbid product morphing, relabeling, and added text.
+- **Prompt Fidelity**: The creative-director model MUST be vision-capable and receive the product anchor image as multimodal input. Its `productDna` MUST be transcribed from that image, never invented from the product name. Vision QA retries MUST re-apply the identity lock and include the specific QA defects.
 - **Security Proxy**: The browser MUST NEVER call OpenRouter directly or receive `OPENROUTER_API_KEY` or raw unsigned URLs. `<video>` playback in `live` mode must go through `GET /api/videos/[jobId]/content` (server-side proxy) or cached public blob storage.
 - **Model Capabilities**: Always validate requested `aspectRatio`, `durationSeconds`, `input_references`, and `last_frame` support against the model's capability metadata before execution.
 
@@ -32,3 +33,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - TypeScript `strict: true` — zero `any`, zero `@ts-ignore`.
 - UI: `shadcn/ui` (dark studio aesthetic), `lucide-react` icons, `sonner` toasts, `zustand` for client studio state.
 - Always run `npx tsc --noEmit` and `pnpm vitest run` before considering a task complete.
+
+## 5. Runtime Media Notes
+- Model routing defaults are environment-driven (`OPENROUTER_TEXT_MODEL`, `OPENROUTER_VISION_QA_MODEL`, `OPENROUTER_IMAGE_MODEL`, `OPENROUTER_VIDEO_MODEL`) and can be overridden per campaign from the frontend model selector. Image/video overrides must also exist in `models-snapshot.json`. Text and Vision QA models must be vision-capable. See `docs/model-configuration.md`.
+- `public/generated/` is runtime-only output from `HybridLocalStorageAdapter` and is gitignored.
+- Live OpenRouter video submission requires `BLOB_READ_WRITE_TOKEN` so `frame_images` are public HTTPS URLs. Without it, the video adapter fails fast with `ProviderCapabilityError`.
+- `GET /api/models?refresh=true` merges live OpenRouter capabilities; the plain endpoint always serves `models-snapshot.json` instantly and remains the offline fallback.
+- Completed live videos play through `GET /api/videos/[jobId]/content`; never expose `OPENROUTER_API_KEY` or unsigned provider URLs to the browser.

@@ -1,7 +1,15 @@
 import { z } from 'zod';
+import type { VideoDurationSeconds } from '@/domain/entities/model-capabilities';
+import {
+  DEFAULT_SHOT_COUNT,
+  MAX_SHOT_COUNT,
+  MIN_SHOT_COUNT,
+} from '@/domain/entities/shot-sequence';
 import {
   HARD_MAX_CAMPAIGN_BUDGET_USD,
+  MAX_VIDEO_DURATION_SECONDS,
   MAX_VISION_QA_RETRIES,
+  MIN_VIDEO_DURATION_SECONDS,
 } from '../services/media-constants';
 
 export const executionModeSchema = z.enum(['mock', 'hybrid', 'live']);
@@ -14,13 +22,19 @@ export const brandToneSchema = z.enum([
   'minimalist-studio',
 ]);
 
-export const shotIndexSchema = z.union([
-  z.literal(1),
-  z.literal(2),
-  z.literal(3),
-]);
+export const shotIndexSchema = z
+  .number()
+  .int()
+  .min(MIN_SHOT_COUNT)
+  .max(MAX_SHOT_COUNT);
 
-export const videoDurationSchema = z.union([z.literal(4), z.literal(5)]);
+export const videoDurationSchema = z.custom<VideoDurationSeconds>(
+  (value) =>
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value >= MIN_VIDEO_DURATION_SECONDS &&
+    value <= MAX_VIDEO_DURATION_SECONDS,
+);
 
 export const productAnchorSchema = z.object({
   name: z.string().trim().min(1),
@@ -48,6 +62,7 @@ export const shotResultSchema = z.object({
   fidelityScore: z.number().min(0).max(10),
   qaFeedback: z.string(),
   wasRetried: z.boolean(),
+  imagePromptUsed: z.string().optional(),
   videoJobId: z.string().optional(),
   videoStatus: z.enum([
     'idle',
@@ -76,25 +91,70 @@ export const costLedgerSchema = z.object({
   entries: z.array(costEntrySchema),
 });
 
-export const campaignStateSchema = z.object({
-  id: z.string().min(1),
-  mode: executionModeSchema,
-  aspectRatio: aspectRatioSchema,
-  tone: brandToneSchema,
-  product: productAnchorSchema,
-  productDna: z.string(),
-  adCopy: adCopySchema,
-  shots: z.array(shotPlanSchema).length(3),
-  results: z.array(shotResultSchema).length(3),
-  ledger: costLedgerSchema,
-});
+export const campaignStateSchema = z
+  .object({
+    id: z.string().min(1),
+    mode: executionModeSchema,
+    aspectRatio: aspectRatioSchema,
+    tone: brandToneSchema,
+    product: productAnchorSchema,
+    productDna: z.string(),
+    adCopy: adCopySchema,
+    shots: z
+      .array(shotPlanSchema)
+      .min(MIN_SHOT_COUNT)
+      .max(MAX_SHOT_COUNT),
+    results: z
+      .array(shotResultSchema)
+      .min(MIN_SHOT_COUNT)
+      .max(MAX_SHOT_COUNT),
+    ledger: costLedgerSchema,
+  })
+  .superRefine((campaign, context) => {
+    if (campaign.shots.length !== campaign.results.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['results'],
+        message:
+          'Campaign results must contain exactly one entry per planned shot.',
+      });
+    }
+
+    campaign.shots.forEach((shot, position) => {
+      if (shot.index !== position + 1) {
+        context.addIssue({
+          code: 'custom',
+          path: ['shots', position, 'index'],
+          message: `Shot indexes must be sequential starting at ${MIN_SHOT_COUNT}.`,
+        });
+      }
+    });
+
+    campaign.results.forEach((result, position) => {
+      if (result.shotIndex !== position + 1) {
+        context.addIssue({
+          code: 'custom',
+          path: ['results', position, 'shotIndex'],
+          message: `Result shot indexes must be sequential starting at ${MIN_SHOT_COUNT}.`,
+        });
+      }
+    });
+  });
 
 export const planCampaignRequestSchema = z.object({
   product: productAnchorSchema,
   tone: brandToneSchema,
   aspectRatio: aspectRatioSchema,
+  textModel: z.string().trim().min(1).optional(),
   imageModel: z.string().trim().min(1),
   videoModel: z.string().trim().min(1),
+  durationSeconds: videoDurationSchema.optional(),
+  shotCount: z
+    .number()
+    .int()
+    .min(MIN_SHOT_COUNT)
+    .max(MAX_SHOT_COUNT)
+    .default(DEFAULT_SHOT_COUNT),
   maxBudgetUsd: z
     .number()
     .positive()
@@ -104,9 +164,28 @@ export const planCampaignRequestSchema = z.object({
   mode: executionModeSchema.optional(),
 });
 
+export const draftCreativeBriefRequestSchema = z.object({
+  product: productAnchorSchema,
+  tone: brandToneSchema,
+  aspectRatio: aspectRatioSchema,
+  shotCount: z
+    .number()
+    .int()
+    .min(MIN_SHOT_COUNT)
+    .max(MAX_SHOT_COUNT)
+    .default(DEFAULT_SHOT_COUNT),
+  maxBudgetUsd: z
+    .number()
+    .positive()
+    .max(HARD_MAX_CAMPAIGN_BUDGET_USD)
+    .default(1.5),
+  mode: executionModeSchema.optional(),
+});
+
 export const generateKeyframesRequestSchema = z.object({
   campaign: campaignStateSchema,
   imageModel: z.string().trim().min(1),
+  visionModel: z.string().trim().min(1).optional(),
   maxRetries: z
     .number()
     .int()
@@ -126,6 +205,9 @@ export const videoStatusQuerySchema = z.object({
 });
 
 export type PlanCampaignRequestDto = z.infer<typeof planCampaignRequestSchema>;
+export type DraftCreativeBriefRequestDto = z.infer<
+  typeof draftCreativeBriefRequestSchema
+>;
 export type GenerateKeyframesRequestDto = z.infer<
   typeof generateKeyframesRequestSchema
 >;

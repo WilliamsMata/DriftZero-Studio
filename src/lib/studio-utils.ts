@@ -5,6 +5,11 @@ import type {
   ShotResult,
 } from "@/domain/entities/campaign";
 import type { ExecutionMode } from "@/domain/entities/campaign";
+import { DEFAULT_SHOT_COUNT } from "@/domain/entities/shot-sequence";
+import type {
+  VideoDurationSeconds,
+  VideoModelCapability,
+} from "@/domain/entities/model-capabilities";
 
 export type StudioStep =
   | "idle"
@@ -20,6 +25,63 @@ export const MIN_BUDGET_USD = 0.5;
 export const MAX_BUDGET_USD = 3;
 export const TOTAL_MEDIA_BUDGET_USD = 10;
 export const DEFAULT_SHOT_DURATION_SECONDS = 4;
+export const MAX_CLIP_DURATION_SECONDS = 10;
+
+export interface DurationSliderConfig {
+  min: VideoDurationSeconds;
+  max: VideoDurationSeconds;
+  step: number;
+  supported: VideoDurationSeconds[];
+}
+
+function greatestCommonDivisor(left: number, right: number): number {
+  return right === 0 ? left : greatestCommonDivisor(right, left % right);
+}
+
+/**
+ * Builds a slider range from the durations a model actually supports.
+ * The step is the GCD of the supported values, so models with discrete
+ * durations (for example Veo's 4/6/8s) never land on unsupported values.
+ */
+export function getDurationSliderConfig(
+  model: VideoModelCapability | undefined,
+): DurationSliderConfig | null {
+  if (!model) return null;
+
+  const supported = [...new Set(model.supportedDurations)]
+    .filter(
+      (duration) =>
+        duration >= 1 && duration <= MAX_CLIP_DURATION_SECONDS,
+    )
+    .sort((left, right) => left - right);
+
+  if (supported.length === 0) return null;
+
+  const min = supported[0];
+  const max = supported[supported.length - 1];
+  const step = supported.reduce<number>(
+    (accumulator, duration) =>
+      greatestCommonDivisor(accumulator, duration),
+    min,
+  );
+
+  return { min, max, step, supported };
+}
+
+export function snapDurationSeconds(
+  value: number,
+  supported: readonly VideoDurationSeconds[],
+): VideoDurationSeconds {
+  if (supported.length === 0) return DEFAULT_SHOT_DURATION_SECONDS;
+
+  return supported.reduce(
+    (closest, duration) =>
+      Math.abs(duration - value) < Math.abs(closest - value)
+        ? duration
+        : closest,
+    supported[0],
+  );
+}
 
 export const TONE_OPTIONS: ReadonlyArray<{
   value: BrandTone;
@@ -126,7 +188,7 @@ export const STEP_META: Record<
   },
   planning: {
     label: "Directing",
-    description: "The creative director is writing the three-shot blueprint.",
+    description: "The creative director is writing the storyboard blueprint.",
   },
   keyframes: {
     label: "Keyframes + Vision QA",
@@ -138,7 +200,7 @@ export const STEP_META: Record<
   },
   "polling-videos": {
     label: "Rendering videos",
-    description: "Polling provider job status until all three shots settle.",
+    description: "Polling provider job status until every shot settles.",
   },
   completed: {
     label: "Campaign complete",
@@ -169,10 +231,6 @@ export function isBrandTone(value: string): value is BrandTone {
   return TONE_OPTIONS.some((option) => option.value === value);
 }
 
-export function isShotIndex(value: number): value is 1 | 2 | 3 {
-  return value === 1 || value === 2 || value === 3;
-}
-
 export function formatUsd(value: number, digits = 2): string {
   return `$${value.toFixed(digits)}`;
 }
@@ -180,23 +238,83 @@ export function formatUsd(value: number, digits = 2): string {
 /**
  * Money in the studio has two roles: campaign totals (two decimals) and unit
  * or ledger costs, which need a third decimal to stay truthful below $1.
+ * Sub-millicent text/vision calls get a fourth decimal so they do not look free.
  */
 export function formatCost(value: number): string {
-  if (!Number.isFinite(value) || Math.abs(value) < 0.0005) return "$0.00";
-  if (Math.abs(value) < 1) return `$${value.toFixed(3)}`;
+  if (!Number.isFinite(value) || value === 0) return "$0.00";
+  const absolute = Math.abs(value);
+  if (absolute < 0.001) return `$${value.toFixed(4)}`;
+  if (absolute < 1) return `$${value.toFixed(3)}`;
   return `$${value.toFixed(2)}`;
 }
 
-export function estimateMediaCostUsd(
-  imageCostPerImageUsd: number,
-  videoCostPerSecondUsd: number,
-  durationSeconds: number,
-  shotCount = 3,
-): number {
-  return (
-    shotCount * imageCostPerImageUsd +
-    shotCount * videoCostPerSecondUsd * durationSeconds
-  );
+export interface CampaignCostEstimate {
+  planUsd: number;
+  visionQaUsd: number;
+  imageUsd: number;
+  videoUsd: number;
+  totalUsd: number;
+  worstCaseTotalUsd: number;
+}
+
+/**
+ * Approximate full-campaign cost for the selected model combination.
+ * The worst case assumes one Vision QA retry per shot, which also regenerates
+ * one image per shot.
+ */
+export function estimateCampaignCostUsd(input: {
+  planCostUsd: number;
+  visionQaCostPerCallUsd: number;
+  imageCostPerImageUsd: number;
+  videoCostPerSecondUsd: number;
+  durationSeconds: number;
+  shotCount?: number;
+}): CampaignCostEstimate {
+  const shotCount = input.shotCount ?? DEFAULT_SHOT_COUNT;
+  const planUsd = input.planCostUsd;
+  const visionQaUsd = input.visionQaCostPerCallUsd * shotCount;
+  const imageUsd = input.imageCostPerImageUsd * shotCount;
+  const videoUsd =
+    input.videoCostPerSecondUsd * input.durationSeconds * shotCount;
+
+  return {
+    planUsd,
+    visionQaUsd,
+    imageUsd,
+    videoUsd,
+    totalUsd: planUsd + visionQaUsd + imageUsd + videoUsd,
+    worstCaseTotalUsd:
+      planUsd + visionQaUsd * 2 + imageUsd * 2 + videoUsd,
+  };
+}
+
+/**
+ * Aligns an estimate with the execution mode: mock is free, hybrid keeps real
+ * text/image/QA spend but mocks video, and live charges every stage.
+ */
+export function applyExecutionModeToEstimate(
+  estimate: CampaignCostEstimate,
+  mode: ExecutionMode,
+): CampaignCostEstimate {
+  if (mode === "live") return estimate;
+
+  if (mode === "mock") {
+    return {
+      planUsd: 0,
+      visionQaUsd: 0,
+      imageUsd: 0,
+      videoUsd: 0,
+      totalUsd: 0,
+      worstCaseTotalUsd: 0,
+    };
+  }
+
+  return {
+    ...estimate,
+    videoUsd: 0,
+    totalUsd: estimate.totalUsd - estimate.videoUsd,
+    worstCaseTotalUsd: estimate.worstCaseTotalUsd - estimate.videoUsd,
+  };
 }
 
 export function clampBudget(value: number): number {
@@ -216,4 +334,33 @@ export function toBrandHandle(productName: string): string {
 export function shortJobId(jobId: string | undefined): string {
   if (!jobId) return "not queued";
   return jobId.length > 14 ? `${jobId.slice(0, 6)}…${jobId.slice(-4)}` : jobId;
+}
+
+function toFileSlug(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+export function toDownloadFileName(
+  productName: string,
+  shotIndex: ShotResult["shotIndex"],
+): string {
+  const slug = toFileSlug(productName);
+  return `driftzero-${slug === "" ? "clip" : slug}-shot-${shotIndex}.mp4`;
+}
+
+/**
+ * The live video proxy owns the provider stream, so downloads are requested
+ * through the same route. Local fixtures are already served as static files.
+ */
+export function toVideoDownloadHref(playbackUrl: string): string {
+  if (!playbackUrl.startsWith("/api/videos/")) return playbackUrl;
+
+  const separator = playbackUrl.includes("?") ? "&" : "?";
+  return `${playbackUrl}${separator}download=1`;
 }

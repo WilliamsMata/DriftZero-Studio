@@ -1,55 +1,138 @@
 {
-  "imageModels": [
+  "chatModels": [
     {
-      "id": "google/gemini-2.5-flash-image",
-      "label": "Gemini 2.5 Flash Image",
-      "provider": "Google",
-      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
-      "supportsInputReferences": true,
-      "maxInputReferences": 3,
-      "estimatedCostPerImageUsd": 0.039
+      "id": "meta/muse-ember",
+      "label": "Muse Ember",
+      "provider": "Meta",
+      "inputCostPerMillionUsd": 0.1,
+      "outputCostPerMillionUsd": 0.5,
+      "supportsVision": true,
+      "reasoningEffort": "high"
     },
     {
-      "id": "bytedance-seed/seedream-4.5",
-      "label": "Seedream 4.5",
+      "id": "deepseek/deepseek-v4.1-flash",
+      "label": "DeepSeek V4.1 Flash",
+      "provider": "DeepSeek",
+      "inputCostPerMillionUsd": 0.0507,
+      "outputCostPerMillionUsd": 0.2028,
+      "supportsVision": true
+    },
+    {
+      "id": "anthropic/claude-haiku-5.5",
+      "label": "Claude Haiku 5.5",
+      "provider": "Anthropic",
+      "inputCostPerMillionUsd": 0.1,
+      "outputCostPerMillionUsd": 0.5,
+      "supportsVision": true
+    },
+    {
+      "id": "openai/gpt-6-luna-pro",
+      "label": "GPT-6 Luna Pro",
+      "provider": "OpenAI",
+      "inputCostPerMillionUsd": 0.1,
+      "outputCostPerMillionUsd": 0.5,
+      "supportsVision": true
+    },
+    {
+      "id": "google/gemini-3.5-flash-lite",
+      "label": "Gemini 3.5 Flash Lite",
+      "provider": "Google",
+      "inputCostPerMillionUsd": 0.3,
+      "outputCostPerMillionUsd": 2.5,
+      "supportsVision": true
+    },
+    {
+      "id": "google/gemini-3.8-flash",
+      "label": "Gemini 3.8 Flash",
+      "provider": "Google",
+      "inputCostPerMillionUsd": 0.825,
+      "outputCostPerMillionUsd": 4.125,
+      "supportsVision": true
+    },
+    {
+      "id": "google/gemini-4-hydrogen",
+      "label": "Gemini 4 Hydrogen",
+      "provider": "Google",
+      "inputCostPerMillionUsd": 1.5,
+      "outputCostPerMillionUsd": 7.5,
+      "supportsVision": true
+    },
+    {
+      "id": "openai/gpt-6.1-terra",
+      "label": "GPT-6.1 Terra",
+      "provider": "OpenAI",
+      "inputCostPerMillionUsd": 1,
+      "outputCostPerMillionUsd": 5,
+      "supportsVision": true
+    },
+    {
+      "id": "anthropic/claude-sonnet-5.5",
+      "label": "Claude Sonnet 5.5",
+      "provider": "Anthropic",
+      "inputCostPerMillionUsd": 2,
+      "outputCostPerMillionUsd": 10,
+      "supportsVision": true
+    },
+    {
+      "id": "z-ai/glm-5.3-flash",
+      "label": "GLM 5.3 Flash",
+      "provider": "Z.ai",
+      "inputCostPerMillionUsd": 0.0399,
+      "outputCostPerMillionUsd": 0.0784,
+      "supportsVision": false
+    }
+  ],
+  "imageModels": [
+    {
+      "id": "black-forest-labs/flux-3-image-klein",
+      "label": "FLUX 3 Image Klein",
+      "provider": "Black Forest Labs",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 10,
+      "estimatedCostPerImageUsd": 0.008
+    },
+    {
+      "id": "bytedance-seed/seedream-5-0-flash",
+      "label": "Seedream 5.0 Flash",
+      "provider": "ByteDance Seed",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 14,
+      "estimatedCostPerImageUsd": 0.018
+    },
+    {
+      "id": "bytedance-seed/seedream-5-5",
+      "label": "Seedream 5.5",
       "provider": "ByteDance Seed",
       "supportedAspectRatios": ["1:1", "16:9", "9:16"],
       "supportsInputReferences": true,
       "maxInputReferences": 10,
-      "estimatedCostPerImageUsd": 0.03
+      "estimatedCostPerImageUsd": 0.02
     },
     {
-      "id": "black-forest-labs/flux.2-klein-4b",
-      "label": "FLUX.2 Klein 4B",
-      "provider": "Black Forest Labs",
+      "id": "google/gemini-nano-banana-2.1",
+      "label": "Nano Banana 2.1",
+      "provider": "Google",
       "supportedAspectRatios": ["1:1", "16:9", "9:16"],
       "supportsInputReferences": true,
-      "maxInputReferences": 4,
-      "estimatedCostPerImageUsd": 0.014
+      "maxInputReferences": 14,
+      "estimatedCostPerImageUsd": 0.04
     }
   ],
   "videoModels": [
     {
-      "id": "bytedance/seedance-1-5-pro",
-      "label": "Seedance 1.5 Pro",
-      "provider": "ByteDance",
-      "supportedAspectRatios": ["16:9", "9:16", "1:1"],
+      "id": "heygen/heygen-video-1",
+      "label": "HeyGen Video 1",
+      "provider": "HeyGen",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
       "supportsInputReferences": false,
       "maxInputReferences": 0,
-      "supportedDurations": [4, 5],
+      "supportedDurations": [5, 6, 7, 8, 9, 10],
+      "supportedResolutions": ["480p", "768p", "1080p", "2K"],
+      "supportedFrameImages": ["first_frame"],
       "supportsLastFrame": false,
-      "estimatedCostPerSecondUsd": 0.05
-    },
-    {
-      "id": "bytedance/seedance-2.0-fast",
-      "label": "Seedance 2.0 Fast",
-      "provider": "ByteDance",
-      "supportedAspectRatios": ["16:9", "9:16", "1:1"],
-      "supportsInputReferences": true,
-      "maxInputReferences": 4,
-      "supportedDurations": [4, 5],
-      "supportsLastFrame": true,
-      "estimatedCostPerSecondUsd": 0.03
+      "estimatedCostPerSecondUsd": 0.02
     },
     {
       "id": "google/veo-3.1-lite",
@@ -58,9 +141,102 @@
       "supportedAspectRatios": ["16:9", "9:16"],
       "supportsInputReferences": true,
       "maxInputReferences": 3,
-      "supportedDurations": [4, 5],
+      "supportedDurations": [4, 6, 8],
+      "supportedResolutions": ["720p", "1080p"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
-      "estimatedCostPerSecondUsd": 0.1
+      "estimatedCostPerSecondUsd": 0.03
+    },
+    {
+      "id": "x-ai/grok-imagine-video-1.5-lite",
+      "label": "Grok Imagine Video 1.5 Lite",
+      "provider": "xAI",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": false,
+      "maxInputReferences": 0,
+      "supportedDurations": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "supportedResolutions": ["480p", "720p", "1080p"],
+      "supportedFrameImages": ["first_frame"],
+      "supportsLastFrame": false,
+      "estimatedCostPerSecondUsd": 0.02
+    },
+    {
+      "id": "bytedance/seedance-2.0-fast",
+      "label": "Seedance 2.0 Fast",
+      "provider": "ByteDance",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 4,
+      "supportedDurations": [4, 5, 6, 7, 8, 9, 10],
+      "supportedResolutions": ["480p", "720p"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.03
+    },
+    {
+      "id": "alibaba/wan-3.0",
+      "label": "Wan 3.0",
+      "provider": "Alibaba",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "supportedDurations": [2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "supportedResolutions": ["480p", "720p", "1080p"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.05
+    },
+    {
+      "id": "minimax/hailuo-3-max",
+      "label": "Hailuo 3 Max",
+      "provider": "MiniMax",
+      "supportedAspectRatios": ["1:1", "16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "supportedDurations": [5, 6, 7, 8, 9, 10],
+      "supportedResolutions": ["480p", "768p"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.05
+    },
+    {
+      "id": "google/gemini-omni-1.2-flash",
+      "label": "Gemini Omni 1.2 Flash",
+      "provider": "Google",
+      "supportedAspectRatios": ["16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "supportedDurations": [3, 4, 5, 6, 7, 8, 9, 10],
+      "supportedResolutions": ["360p", "720p", "1080p", "4K"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.069504
+    },
+    {
+      "id": "google/veo-3.1-fast",
+      "label": "Veo 3.1 Fast",
+      "provider": "Google",
+      "supportedAspectRatios": ["16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "supportedDurations": [4, 6, 8],
+      "supportedResolutions": ["720p", "1080p", "4K"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.08
+    },
+    {
+      "id": "google/veo-3.1",
+      "label": "Veo 3.1",
+      "provider": "Google",
+      "supportedAspectRatios": ["16:9", "9:16"],
+      "supportsInputReferences": true,
+      "maxInputReferences": 3,
+      "supportedDurations": [4, 6, 8],
+      "supportedResolutions": ["720p", "1080p", "4K"],
+      "supportedFrameImages": ["first_frame", "last_frame"],
+      "supportsLastFrame": true,
+      "estimatedCostPerSecondUsd": 0.2
     }
   ]
 }

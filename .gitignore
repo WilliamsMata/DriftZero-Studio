@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# hybrid-mode generated media (served locally, never committed)
+/public/generated/

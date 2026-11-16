@@ -1,9 +1,15 @@
 import type {
+  BrandTone,
   ShotPlan,
   ShotResult,
 } from '@/domain/entities/campaign';
+import {
+  shotRoleForIndex,
+  shotTitleForIndex,
+} from '@/domain/entities/shot-sequence';
 import type {
   AssetStoragePort,
+  BriefDraftOutput,
   CreativeDirectorPort,
   DirectorOutput,
   ImageGenOutput,
@@ -65,32 +71,44 @@ export class MockDirectorAdapter implements CreativeDirectorPort {
   ): Promise<DirectorOutput> {
     await sleep(700);
 
-    const shots: [ShotPlan, ShotPlan, ShotPlan] = [
-      {
-        index: 1,
-        role: 'hero-packshot',
-        title: 'Hero Pedestal & Relighting',
-        imagePrompt: `Shot 1 (hero-packshot): editorial studio packshot of ${input.product.name} on warm travertine stone, dramatic golden rim lighting, 85mm lens`,
-        videoMotionPrompt:
-          'Slow cinematic orbit push-in with subtle light sweep across product surface',
+    const shots: ShotPlan[] = Array.from(
+      { length: input.shotCount },
+      (_, position): ShotPlan => {
+        const index = position + 1;
+        const role = shotRoleForIndex(index, input.shotCount);
+
+        if (role === 'hero-packshot') {
+          return {
+            index,
+            role,
+            title: shotTitleForIndex(index, input.shotCount),
+            imagePrompt: `Shot ${index} (hero-packshot): editorial studio packshot of ${input.product.name} on warm travertine stone, dramatic golden rim lighting, 85mm lens`,
+            videoMotionPrompt:
+              'Slow cinematic orbit push-in with subtle light sweep across product surface',
+          };
+        }
+
+        if (role === 'macro-finale') {
+          return {
+            index,
+            role,
+            title: shotTitleForIndex(index, input.shotCount),
+            imagePrompt: `Shot ${index} (macro-finale): extreme macro close-up of ${input.product.name} with micro water droplets and specular highlights, dark luxury backdrop`,
+            videoMotionPrompt:
+              'Smooth macro pull-back reveal with shimmering light particles',
+          };
+        }
+
+        return {
+          index,
+          role,
+          title: shotTitleForIndex(index, input.shotCount),
+          imagePrompt: `Shot ${index} (lifestyle-context): ${input.product.name} placed naturally on a luxury marble terrace overlooking desert sunset, shallow depth of field`,
+          videoMotionPrompt:
+            'Gentle handheld parallax drift with warm ambient breeze and soft bokeh',
+        };
       },
-      {
-        index: 2,
-        role: 'lifestyle-context',
-        title: 'Dubai Sunset Lifestyle',
-        imagePrompt: `Shot 2 (lifestyle-context): ${input.product.name} placed naturally on a luxury marble terrace overlooking desert sunset, shallow depth of field`,
-        videoMotionPrompt:
-          'Gentle handheld parallax drift with warm ambient breeze and soft bokeh',
-      },
-      {
-        index: 3,
-        role: 'macro-finale',
-        title: 'Macro Detail Finale',
-        imagePrompt: `Shot 3 (macro-finale): extreme macro close-up of ${input.product.name} with micro water droplets and specular highlights, dark luxury backdrop`,
-        videoMotionPrompt:
-          'Smooth macro pull-back reveal with shimmering light particles',
-      },
-    ];
+    );
 
     return {
       productDna: `${input.product.name} (${input.product.category}): exact geometry, original brand label preserved, crisp edges, studio reflections.`,
@@ -102,6 +120,27 @@ export class MockDirectorAdapter implements CreativeDirectorPort {
       shots,
       costUsd: 0,
       model: 'mock/director-v1',
+    };
+  }
+
+  async draftBrief(
+    input: Parameters<CreativeDirectorPort['draftBrief']>[0],
+  ): Promise<BriefDraftOutput> {
+    await sleep(450);
+
+    const direction: Record<BrandTone, string> = {
+      'luxury-editorial':
+        'a golden-hour editorial narrative with slow cinematic moves and macro product fidelity',
+      'tiktok-ugc':
+        'fast native social hooks, handheld energy and punchy creator pacing',
+      'minimalist-studio':
+        'quiet studio geometry, controlled reflections and precise product blocking',
+    };
+
+    return {
+      brief: `${input.product.name} (${input.product.category}) launch: ${direction[input.tone]} across ${input.shotCount} ${input.aspectRatio} shots. Keep the exact product identity in every frame, with no added text or relabeling.`,
+      costUsd: 0,
+      model: 'mock/brief-writer-v1',
     };
   }
 }
@@ -134,9 +173,7 @@ export class MockVisionQaAdapter implements VisionQaPort {
     await sleep(450);
 
     const prompt = input.originalPrompt;
-    const isDemoShot =
-      /\bShot 2\b/.test(prompt) ||
-      prompt.toLowerCase().includes('lifestyle-context');
+    const isDemoShot = /\bShot 2\b/.test(prompt);
     const hasBeenRefined = prompt
       .toLowerCase()
       .includes('razor sharp product typography');
@@ -213,6 +250,10 @@ export class MockAssetStorageAdapter implements AssetStoragePort {
     void b64Json;
     void filename;
     return '/fixtures/perfume-anchor.jpeg';
+  }
+
+  async ensurePublicHttpsUrl(source: string): Promise<string> {
+    return source;
   }
 }
 

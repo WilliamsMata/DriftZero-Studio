@@ -17,6 +17,7 @@ export interface VideoRequestValidation {
   aspectRatio: AspectRatio;
   durationSeconds: VideoDurationSeconds;
   hasLastFrame: boolean;
+  hasFirstFrame?: boolean;
 }
 
 function assertAspectRatio(
@@ -67,6 +68,7 @@ export function validateVideoRequest({
   aspectRatio,
   durationSeconds,
   hasLastFrame,
+  hasFirstFrame = false,
 }: VideoRequestValidation): void {
   assertAspectRatio(model, aspectRatio);
 
@@ -76,6 +78,13 @@ export function validateVideoRequest({
       `duration ${durationSeconds}s is not supported. Supported durations: ${model.supportedDurations
         .map((duration) => `${duration}s`)
         .join(', ')}.`,
+    );
+  }
+
+  if (hasFirstFrame && !model.supportedFrameImages.includes('first_frame')) {
+    throw new ProviderCapabilityError(
+      model.id,
+      'first-frame image-to-video conditioning is not supported by this model.',
     );
   }
 

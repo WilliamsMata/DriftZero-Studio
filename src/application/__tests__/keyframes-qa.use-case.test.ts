@@ -5,7 +5,10 @@ import type {
   CampaignState,
   ShotPlan,
 } from '@/domain/entities/campaign';
-import type { ImageModelCapability } from '@/domain/entities/model-capabilities';
+import type {
+  ChatModelCapability,
+  ImageModelCapability,
+} from '@/domain/entities/model-capabilities';
 import type {
   AssetStoragePort,
   ImageGenOutput,
@@ -23,6 +26,15 @@ const imageModel: ImageModelCapability = {
   supportsInputReferences: true,
   maxInputReferences: 2,
   estimatedCostPerImageUsd: 0.039,
+};
+
+const visionModel: ChatModelCapability = {
+  id: 'test/vision-model',
+  label: 'Test Vision Model',
+  provider: 'Test Provider',
+  inputCostPerMillionUsd: 0.1,
+  outputCostPerMillionUsd: 0.2,
+  supportsVision: true,
 };
 
 const shots: ShotPlan[] = [
@@ -85,6 +97,9 @@ function createCampaign(): CampaignState {
 }
 
 const catalog: ModelCatalogPort = {
+  listChatModels: () => [visionModel],
+  getChatModel: (modelId) =>
+    modelId === visionModel.id ? visionModel : undefined,
   listImageModels: () => [imageModel],
   listVideoModels: () => [],
   getImageModel: (modelId) =>
@@ -101,6 +116,29 @@ class FakeImageAdapter implements ImageGenPort {
     this.prompts.push(input.prompt);
     return {
       publicUrl: `/fixtures/generated-${this.prompts.length}.jpeg`,
+      costUsd: 0.039,
+      model: input.model,
+    };
+  }
+}
+
+class TrackingImageAdapter implements ImageGenPort {
+  active = 0;
+  maxActive = 0;
+  calls = 0;
+
+  async generateKeyframe(
+    input: Parameters<ImageGenPort['generateKeyframe']>[0],
+  ): Promise<ImageGenOutput> {
+    this.active += 1;
+    this.calls += 1;
+    this.maxActive = Math.max(this.maxActive, this.active);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    this.active -= 1;
+    return {
+      publicUrl: `/fixtures/generated-${this.calls}.jpeg`,
       costUsd: 0.039,
       model: input.model,
     };
@@ -148,6 +186,10 @@ class FakeStorageAdapter implements AssetStoragePort {
     void filename;
     return '/fixtures/oud-perfume/shot-1.jpeg';
   }
+
+  async ensurePublicHttpsUrl(source: string): Promise<string> {
+    return source;
+  }
 }
 
 describe('GenerateKeyframesWithQaUseCase', () => {
@@ -166,6 +208,7 @@ describe('GenerateKeyframesWithQaUseCase', () => {
     const output = await useCase.execute({
       campaign: createCampaign(),
       imageModel: imageModel.id,
+      visionModel: visionModel.id,
       maxRetries: 1,
     });
 
@@ -173,12 +216,37 @@ describe('GenerateKeyframesWithQaUseCase', () => {
     expect(image.prompts).toHaveLength(6);
     expect(visionQa.calls).toBe(6);
 
-    // The retry prompts must carry the refinement guidance.
-    expect(image.prompts[1]).toContain('razor sharp product typography');
-    expect(image.prompts[3]).toContain('razor sharp product typography');
-    expect(image.prompts[5]).toContain('razor sharp product typography');
+    // Every prompt must carry the product identity block and frame policy.
+    expect(image.prompts[0]).toContain(
+      'Amber glass bottle with exact label preservation.',
+    );
+    expect(image.prompts[0]).toContain('NON-NEGOTIABLE FIDELITY RULES');
+    expect(image.prompts[0]).toContain('FRAME: vertical 9:16 frame');
+
+    // The retry prompts must carry the refinement guidance and QA defects.
+    const refinedPrompts = image.prompts.filter((prompt) =>
+      prompt.includes('razor sharp product typography'),
+    );
+    expect(refinedPrompts).toHaveLength(3);
+    expect(
+      refinedPrompts.every((prompt) =>
+        prompt.includes('CORRECTIONS REQUIRED FROM PRODUCT-FIDELITY QA'),
+      ),
+    ).toBe(true);
+    expect(
+      refinedPrompts.every((prompt) =>
+        prompt.includes('Label text softened'),
+      ),
+    ).toBe(true);
 
     expect(output.results).toHaveLength(3);
+    expect(
+      output.results.every((result) =>
+        result.imagePromptUsed?.includes(
+          'Amber glass bottle with exact label preservation.',
+        ),
+      ),
+    ).toBe(true);
     expect(output.results.every((result) => result.wasRetried)).toBe(true);
     expect(output.results.every((result) => result.fidelityScore === 4)).toBe(
       true,
@@ -210,13 +278,38 @@ describe('GenerateKeyframesWithQaUseCase', () => {
     const output = await useCase.execute({
       campaign: createCampaign(),
       imageModel: imageModel.id,
+      visionModel: visionModel.id,
     });
 
     expect(image.prompts).toHaveLength(3);
+    expect(image.prompts[0]).toContain(
+      'Amber glass bottle with exact label preservation.',
+    );
+    expect(image.prompts[0]).toContain('NON-NEGOTIABLE FIDELITY RULES');
     expect(visionQa.calls).toBe(3);
     expect(output.results.every((result) => result.wasRetried)).toBe(false);
     expect(output.results.every((result) => result.fidelityScore === 9)).toBe(
       true,
     );
+  });
+
+  it('runs the initial keyframe wave in parallel', async () => {
+    const image = new TrackingImageAdapter();
+    const visionQa = new HighFidelityVisionQaAdapter();
+    const useCase = new GenerateKeyframesWithQaUseCase({
+      image,
+      visionQa,
+      storage: new FakeStorageAdapter(),
+      catalog,
+    });
+
+    await useCase.execute({
+      campaign: createCampaign(),
+      imageModel: imageModel.id,
+      visionModel: visionModel.id,
+    });
+
+    expect(image.calls).toBe(3);
+    expect(image.maxActive).toBeGreaterThan(1);
   });
 });

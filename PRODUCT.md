@@ -33,13 +33,13 @@ Success means an evaluator can complete a preset campaign end to end, inspect wh
 ## Capabilities and Constraints
 
 - Execution modes: `mock` (fully simulated, $0), `hybrid` (real LLM and images, mock video), `live` (all OpenRouter media). Mock is the default and the mode a visitor sees without configuration.
-- Campaigns are always three shots: hero packshot, lifestyle context, macro finale. Aspect ratios: 9:16, 16:9, 1:1, validated against the selected models' capabilities. Brand tones: luxury editorial, TikTok UGC, minimalist studio.
-- A server-side model catalog supplies capability metadata (input references, last-frame support, aspect ratios, per-image and per-second cost); the UI refuses requests the selected models cannot serve.
+- Campaigns support 1–5 shots (default 3). Each shot maps 1:1 to one keyframe and one image-to-video clip. The role sequence is hero packshot for shot 1, macro finale for the last shot, and lifestyle beats in between. Aspect ratios: 9:16, 16:9, 1:1, validated against the selected models' capabilities. Brand tones: luxury editorial, TikTok UGC, minimalist studio.
+- A server-side model catalog supplies capability and pricing metadata for text, vision, image, and video models. All four are selectable in the UI, and the config panel shows an approximate cost for the selected combination before any spend.
 - `BudgetGuardrail` pre-reserves every media step and blocks the run when the campaign total would exceed the cap. Default cap is $1.50 per campaign; the total media budget for the project is $10 USD. Vision QA retries are hard-capped at 1 per shot.
 - Media stays server-side: the browser never receives provider keys or unsigned provider URLs; video plays through a server proxy or public blob storage.
 - Strict hexagonal architecture: domain and application layers hold no React, Next, or SDK imports; Route Handlers delegate to use cases. TypeScript `strict`, zero `any`.
 - All code, comments, types, UI copy, and tests are in English.
-- Durable constraints confirmed by the owner: local single-user with no auth, the $10 media budget, the fixed three-shot structure, and server-proxied media only.
+- Durable constraints confirmed by the owner: local single-user with no auth, the $10 media budget, the 1–5 shot structure (one repair attempt per shot), and server-proxied media only.
 - Undecided: whether the demo is ever run in `live` mode with real spend, and whether campaign state should persist beyond a session.
 
 ## Brand Commitments

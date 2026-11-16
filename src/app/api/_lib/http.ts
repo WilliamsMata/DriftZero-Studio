@@ -4,9 +4,13 @@ import { ZodError } from 'zod';
 import { executionModeSchema } from '@/application/dto/campaign-schemas';
 import type { ExecutionMode } from '@/domain/entities/campaign';
 import {
+  AssetResolutionError,
+  AssetUploadError,
   BudgetGuardrailError,
   InvalidWorkflowStateError,
   ProviderCapabilityError,
+  ProviderConfigurationError,
+  ProviderRequestError,
 } from '@/domain/errors/domain-errors';
 
 export function jsonOk<T>(payload: T, status = 200): NextResponse<T> {
@@ -55,6 +59,70 @@ export function toErrorResponse(error: unknown): NextResponse {
           message: error.message,
           details: {
             modelId: error.modelId,
+            reason: error.reason,
+          },
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  if (error instanceof ProviderConfigurationError) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'PROVIDER_NOT_CONFIGURED',
+          message: error.message,
+          details: {
+            provider: error.provider,
+            missingEnvVar: error.missingEnvVar,
+          },
+        },
+      },
+      { status: 503 },
+    );
+  }
+
+  if (error instanceof ProviderRequestError) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'PROVIDER_REQUEST_FAILED',
+          message: error.message,
+          details: {
+            provider: error.provider,
+            status: error.status,
+            providerCode: error.providerCode ?? null,
+            providerMessage: error.providerMessage,
+          },
+        },
+      },
+      { status: 502 },
+    );
+  }
+
+  if (error instanceof AssetResolutionError) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'ASSET_RESOLUTION_FAILED',
+          message: error.message,
+          details: {
+            reference: error.reference,
+          },
+        },
+      },
+      { status: 422 },
+    );
+  }
+
+  if (error instanceof AssetUploadError) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'INVALID_ASSET_UPLOAD',
+          message: error.message,
+          details: {
             reason: error.reason,
           },
         },

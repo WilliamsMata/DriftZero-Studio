@@ -4,12 +4,19 @@ import type {
   ShotPlan,
   ShotResult,
 } from '@/domain/entities/campaign';
-import type { ImageModelCapability } from '@/domain/entities/model-capabilities';
+import {
+  MAX_SHOT_COUNT,
+  MIN_SHOT_COUNT,
+} from '@/domain/entities/shot-sequence';
+import type {
+  ChatModelCapability,
+  ImageModelCapability,
+} from '@/domain/entities/model-capabilities';
 import { InvalidWorkflowStateError } from '@/domain/errors/domain-errors';
 import type {
   AssetStoragePort,
-  ImageGenPort,
   ImageGenOutput,
+  ImageGenPort,
   VisionQaOutput,
   VisionQaPort,
 } from '@/domain/ports/media-ports';
@@ -17,19 +24,26 @@ import type { ModelCatalogPort } from '@/domain/ports/model-catalog-port';
 import {
   appendCostEntry,
   assertWithinBudget,
+  roundUsd,
 } from '../services/budget-guardrail';
 import { validateImageRequest } from '../services/capability-validator';
+import { estimateVisionQaCostUsd } from '../services/chat-cost-estimator';
+import { mapWithConcurrency } from '../services/concurrency';
+import { buildKeyframePrompt } from '../services/keyframe-prompt';
 import {
-  ESTIMATED_VISION_QA_USD,
   MAX_VISION_QA_RETRIES,
+  MEDIA_CONCURRENCY,
   MIN_FIDELITY_SCORE,
-  SHOT_COUNT,
 } from '../services/media-constants';
-import { requireImageModel } from '../services/model-resolver';
+import {
+  requireImageModel,
+  requireVisionModel,
+} from '../services/model-resolver';
 
 export interface GenerateKeyframesInput {
   campaign: CampaignState;
   imageModel: string;
+  visionModel: string;
   maxRetries?: number;
 }
 
@@ -50,15 +64,23 @@ interface AttemptParams {
   campaign: CampaignState;
   shot: ShotPlan;
   imageModel: ImageModelCapability;
-  prompt: string;
+  visionModel: ChatModelCapability;
+  /** Scene and camera direction, before product identity is injected. */
+  creativeDirection: string;
+  /** Extra instruction for the single Vision QA repair attempt. */
+  correctiveFeedback?: string;
   phase: 'initial' | 'retry';
-  ledger: CostLedger;
 }
 
-interface AttemptOutput {
-  keyframeUrl: string;
+interface AttemptResult {
+  shot: ShotPlan;
+  phase: 'initial' | 'retry';
+  creativeDirection: string;
+  /** Exact prompt sent to the image model, including identity rules. */
+  prompt: string;
+  image: ImageGenOutput;
   qa: VisionQaOutput;
-  ledger: CostLedger;
+  keyframeUrl: string;
 }
 
 function clampRetries(requestedRetries: number | undefined): number {
@@ -86,13 +108,46 @@ function formatQaFeedback(qa: VisionQaOutput, wasRetried: boolean): string {
   return `Auto-retry applied, but fidelity remains below ${MIN_FIDELITY_SCORE}/10. ${qa.fidelityScore}/10 product fidelity. ${defects}`;
 }
 
-function fallbackRefinedPrompt(prompt: string): string {
-  return `${prompt}, razor sharp product typography and exact label preservation`;
+function formatQaCorrections(qa: VisionQaOutput): string {
+  if (qa.defects.length === 0) {
+    return 'The previous keyframe drifted from the reference. Match the product exactly.';
+  }
+
+  return `Eliminate these defects from the previous keyframe: ${qa.defects.join(
+    '; ',
+  )}.`;
+}
+
+function appendAttemptCosts(
+  ledger: CostLedger,
+  attempts: readonly AttemptResult[],
+): CostLedger {
+  let next = ledger;
+
+  for (const attempt of attempts) {
+    next = appendCostEntry(next, {
+      step: 'image',
+      model: attempt.image.model,
+      costUsd: attempt.image.costUsd,
+      note: `Shot ${attempt.shot.index} keyframe (${attempt.phase})`,
+    });
+    next = appendCostEntry(next, {
+      step: 'vision-qa',
+      model: attempt.qa.model,
+      costUsd: attempt.qa.costUsd,
+      note: `Shot ${attempt.shot.index} product fidelity check (${attempt.phase})`,
+    });
+  }
+
+  return next;
 }
 
 /**
- * Generates the three keyframes in order, runs Vision QA on each one, and
- * self-heals low-fidelity frames with exactly one retry when allowed.
+ * Generates every keyframe and runs Vision QA per shot.
+ *
+ * Shots are processed in parallel with a bounded concurrency so a five-shot
+ * campaign does not serialize five image generations. Budget batches are
+ * preflighted before each wave, and the one-repair rule still applies per shot.
  */
 export class GenerateKeyframesWithQaUseCase {
   constructor(private readonly dependencies: GenerateKeyframesDependencies) {}
@@ -102,9 +157,18 @@ export class GenerateKeyframesWithQaUseCase {
   ): Promise<GenerateKeyframesOutput> {
     const { campaign } = input;
 
-    if (campaign.shots.length !== SHOT_COUNT) {
+    if (
+      campaign.shots.length < MIN_SHOT_COUNT ||
+      campaign.shots.length > MAX_SHOT_COUNT
+    ) {
       throw new InvalidWorkflowStateError(
-        `Keyframe generation requires exactly ${SHOT_COUNT} planned shots, received ${campaign.shots.length}.`,
+        `Keyframe generation supports between ${MIN_SHOT_COUNT} and ${MAX_SHOT_COUNT} planned shots, received ${campaign.shots.length}.`,
+      );
+    }
+
+    if (campaign.results.length !== campaign.shots.length) {
+      throw new InvalidWorkflowStateError(
+        'Keyframe generation requires one result placeholder per planned shot.',
       );
     }
 
@@ -112,6 +176,11 @@ export class GenerateKeyframesWithQaUseCase {
       this.dependencies.catalog,
       input.imageModel,
     );
+    const visionModel = requireVisionModel(
+      this.dependencies.catalog,
+      input.visionModel,
+    );
+    const estimatedVisionQaUsd = estimateVisionQaCostUsd(visionModel);
 
     validateImageRequest({
       model: imageModel,
@@ -124,55 +193,106 @@ export class GenerateKeyframesWithQaUseCase {
       (left, right) => left.index - right.index,
     );
 
-    let ledger = campaign.ledger;
-    const results: ShotResult[] = [];
+    orderedShots.forEach((shot, position) => {
+      if (shot.index !== position + 1) {
+        throw new InvalidWorkflowStateError(
+          'Campaign shots must use sequential indexes starting at 1.',
+        );
+      }
+    });
 
-    for (const shot of orderedShots) {
-      const initialAttempt = await this.runAttempt({
-        campaign,
-        shot,
-        imageModel,
-        prompt: shot.imagePrompt,
-        phase: 'initial',
-        ledger,
-      });
+    const estimatedBatchUsd = roundUsd(
+      (imageModel.estimatedCostPerImageUsd + estimatedVisionQaUsd) *
+        orderedShots.length,
+    );
+    assertWithinBudget(campaign.ledger, estimatedBatchUsd);
 
-      ledger = initialAttempt.ledger;
-      let qa = initialAttempt.qa;
-      let keyframeUrl = initialAttempt.keyframeUrl;
-      let wasRetried = false;
-
-      if (qa.fidelityScore < MIN_FIDELITY_SCORE && allowedRetries > 0) {
-        const refinedPrompt =
-          qa.refinedPrompt.trim() !== ''
-            ? qa.refinedPrompt
-            : fallbackRefinedPrompt(shot.imagePrompt);
-
-        const retryAttempt = await this.runAttempt({
+    const initialAttempts = await mapWithConcurrency(
+      orderedShots,
+      MEDIA_CONCURRENCY,
+      (shot) =>
+        this.runAttempt({
           campaign,
           shot,
           imageModel,
-          prompt: refinedPrompt,
-          phase: 'retry',
-          ledger,
-        });
+          visionModel,
+          creativeDirection: shot.imagePrompt,
+          phase: 'initial',
+        }),
+    );
 
-        ledger = retryAttempt.ledger;
-        qa = retryAttempt.qa;
-        keyframeUrl = retryAttempt.keyframeUrl;
-        wasRetried = true;
+    let ledger = appendAttemptCosts(campaign.ledger, initialAttempts);
+    assertWithinBudget(ledger, 0);
+
+    const retryCandidates = initialAttempts.filter(
+      (attempt) => attempt.qa.fidelityScore < MIN_FIDELITY_SCORE,
+    );
+    let retryAttempts: AttemptResult[] = [];
+
+    if (allowedRetries > 0 && retryCandidates.length > 0) {
+      const estimatedRetryBatchUsd = roundUsd(
+        (imageModel.estimatedCostPerImageUsd + estimatedVisionQaUsd) *
+          retryCandidates.length,
+      );
+      assertWithinBudget(ledger, estimatedRetryBatchUsd);
+
+      retryAttempts = await mapWithConcurrency(
+        retryCandidates,
+        MEDIA_CONCURRENCY,
+        (attempt) => {
+          const refinedDirection = attempt.qa.refinedPrompt.trim();
+          const creativeDirection =
+            refinedDirection !== ''
+              ? refinedDirection
+              : attempt.creativeDirection;
+
+          return this.runAttempt({
+            campaign,
+            shot: attempt.shot,
+            imageModel,
+            visionModel,
+            creativeDirection,
+            correctiveFeedback: formatQaCorrections(attempt.qa),
+            phase: 'retry',
+          });
+        },
+      );
+
+      ledger = appendAttemptCosts(ledger, retryAttempts);
+      assertWithinBudget(ledger, 0);
+    }
+
+    const initialByIndex = new Map(
+      initialAttempts.map((attempt) => [attempt.shot.index, attempt]),
+    );
+    const retryByIndex = new Map(
+      retryAttempts.map((attempt) => [attempt.shot.index, attempt]),
+    );
+
+    const results: ShotResult[] = orderedShots.map((shot) => {
+      const initial = initialByIndex.get(shot.index);
+
+      if (!initial) {
+        throw new InvalidWorkflowStateError(
+          `Shot ${shot.index} is missing its keyframe result.`,
+        );
       }
 
-      results.push({
+      const retry = retryByIndex.get(shot.index);
+      const finalAttempt = retry ?? initial;
+      const wasRetried = retry !== undefined;
+
+      return {
         shotIndex: shot.index,
-        keyframeUrl,
-        fidelityScore: qa.fidelityScore,
-        qaFeedback: formatQaFeedback(qa, wasRetried),
+        keyframeUrl: finalAttempt.keyframeUrl,
+        fidelityScore: finalAttempt.qa.fidelityScore,
+        qaFeedback: formatQaFeedback(finalAttempt.qa, wasRetried),
         wasRetried,
+        imagePromptUsed: finalAttempt.prompt,
         videoStatus: 'idle',
         videoProgress: 0,
-      });
-    }
+      };
+    });
 
     const updatedCampaign: CampaignState = {
       ...campaign,
@@ -191,13 +311,22 @@ export class GenerateKeyframesWithQaUseCase {
     campaign,
     shot,
     imageModel,
-    prompt,
+    visionModel,
+    creativeDirection,
+    correctiveFeedback,
     phase,
-    ledger,
-  }: AttemptParams): Promise<AttemptOutput> {
-    assertWithinBudget(ledger, imageModel.estimatedCostPerImageUsd);
+  }: AttemptParams): Promise<AttemptResult> {
+    // Compose at the generation boundary so every path (planned campaign,
+    // preset, or API caller) sends the same identity-locked prompt.
+    const prompt = buildKeyframePrompt({
+      creativeDirection,
+      productDna: campaign.productDna,
+      tone: campaign.tone,
+      aspectRatio: campaign.aspectRatio,
+      correctiveFeedback,
+    });
 
-    const imageOutput = await this.dependencies.image.generateKeyframe({
+    const image = await this.dependencies.image.generateKeyframe({
       prompt,
       referenceImageUrls: [campaign.product.imageUrl],
       aspectRatio: campaign.aspectRatio,
@@ -205,40 +334,31 @@ export class GenerateKeyframesWithQaUseCase {
     });
 
     const keyframeUrl = await this.resolveKeyframeUrl(
-      imageOutput,
+      image,
       campaign.id,
       shot.index,
       phase,
     );
 
-    let nextLedger = appendCostEntry(ledger, {
-      step: 'image',
-      model: imageOutput.model,
-      costUsd: imageOutput.costUsd,
-      note: `Shot ${shot.index} keyframe (${phase})`,
-    });
-    assertWithinBudget(nextLedger, 0);
-
-    assertWithinBudget(nextLedger, ESTIMATED_VISION_QA_USD);
+    // QA receives the creative direction, not the composed prompt: its
+    // `refinedPrompt` replaces the scene direction and the application
+    // re-applies the identity lock on the retry.
     const qa = await this.dependencies.visionQa.evaluateProductFidelity({
       originalProductUrl: campaign.product.imageUrl,
       generatedKeyframeUrl: keyframeUrl,
-      originalPrompt: prompt,
+      originalPrompt: creativeDirection,
       productDna: campaign.productDna,
+      model: visionModel.id,
     });
-
-    nextLedger = appendCostEntry(nextLedger, {
-      step: 'vision-qa',
-      model: qa.model,
-      costUsd: qa.costUsd,
-      note: `Shot ${shot.index} product fidelity check (${phase})`,
-    });
-    assertWithinBudget(nextLedger, 0);
 
     return {
-      keyframeUrl,
+      shot,
+      phase,
+      creativeDirection,
+      prompt,
+      image,
       qa,
-      ledger: nextLedger,
+      keyframeUrl,
     };
   }
 
@@ -252,7 +372,7 @@ export class GenerateKeyframesWithQaUseCase {
 
     if (output.b64Json) {
       const safeCampaignId = campaignId.replace(/[^a-zA-Z0-9_-]/g, '-');
-      const filename = `${safeCampaignId}-shot-${shotIndex}-${phase}.jpeg`;
+      const filename = `${safeCampaignId}-shot-${shotIndex}-${phase}.png`;
       return this.dependencies.storage.savePublicImageFromBase64(
         output.b64Json,
         filename,

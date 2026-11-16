@@ -16,6 +16,17 @@ export interface ShowcasePreset {
   campaign: CampaignState;
 }
 
+/** Anchor metadata that never belongs to the campaign state itself. */
+export interface ProductAnchorOption extends ProductAnchor {
+  defaultBrief?: string;
+}
+
+const PERFUME_BRIEF =
+  'Luxury perfume launch with a golden-hour Dubai terrace narrative, macro label fidelity, and smooth HeyGen image-to-video transitions.';
+
+const WATCH_BRIEF =
+  'Chronos Apex GT launch: precision-engineering narrative on a midnight city terrace, tachymeter and blue-dial macro fidelity, and controlled slow-motion image-to-video moves that keep every marker sharp.';
+
 function mockCostEntry(
   step: CostEntry['step'],
   model: string,
@@ -119,28 +130,40 @@ const oudCampaign: CampaignState = {
     entries: [
       mockCostEntry(
         'director',
-        'creative-director',
-        'Creative direction and three-shot blueprint',
+        'deepseek/deepseek-v4.1-flash',
+        'Creative direction and storyboard blueprint',
       ),
-      mockCostEntry('image', 'google/gemini-2.5-flash-image', 'Shot 1 keyframe'),
-      mockCostEntry('image', 'google/gemini-2.5-flash-image', 'Shot 2 keyframe'),
+      mockCostEntry('image', 'black-forest-labs/flux-3-image-klein', 'Shot 1 keyframe'),
+      mockCostEntry('image', 'black-forest-labs/flux-3-image-klein', 'Shot 2 keyframe'),
       mockCostEntry(
         'image',
-        'google/gemini-2.5-flash-image',
+        'black-forest-labs/flux-3-image-klein',
         'Shot 2 keyframe auto-retry',
       ),
-      mockCostEntry('image', 'google/gemini-2.5-flash-image', 'Shot 3 keyframe'),
-      mockCostEntry('vision-qa', 'vision-qa-v1', 'Shot 1 fidelity check'),
-      mockCostEntry('vision-qa', 'vision-qa-v1', 'Shot 2 fidelity check'),
+      mockCostEntry('image', 'black-forest-labs/flux-3-image-klein', 'Shot 3 keyframe'),
       mockCostEntry(
         'vision-qa',
-        'vision-qa-v1',
+        'deepseek/deepseek-v4.1-flash',
+        'Shot 1 fidelity check',
+      ),
+      mockCostEntry(
+        'vision-qa',
+        'deepseek/deepseek-v4.1-flash',
+        'Shot 2 fidelity check',
+      ),
+      mockCostEntry(
+        'vision-qa',
+        'deepseek/deepseek-v4.1-flash',
         'Shot 2 fidelity re-check after retry',
       ),
-      mockCostEntry('vision-qa', 'vision-qa-v1', 'Shot 3 fidelity check'),
-      mockCostEntry('video', 'google/veo-3.1-lite', 'Shot 1 job'),
-      mockCostEntry('video', 'google/veo-3.1-lite', 'Shot 2 job'),
-      mockCostEntry('video', 'google/veo-3.1-lite', 'Shot 3 job'),
+      mockCostEntry(
+        'vision-qa',
+        'deepseek/deepseek-v4.1-flash',
+        'Shot 3 fidelity check',
+      ),
+      mockCostEntry('video', 'heygen/heygen-video-1', 'Shot 1 job'),
+      mockCostEntry('video', 'heygen/heygen-video-1', 'Shot 2 job'),
+      mockCostEntry('video', 'heygen/heygen-video-1', 'Shot 3 job'),
     ],
   },
 };
@@ -150,16 +173,15 @@ export const SHOWCASE_PRESETS: readonly ShowcasePreset[] = [
   {
     id: 'oud-al-sahara',
     name: 'Oud Al-Sahara Elixir',
-    description:
-      'Luxury perfume launch with a golden-hour Dubai terrace narrative, macro label fidelity, and smooth Veo last-frame transitions.',
-    imageModel: 'google/gemini-2.5-flash-image',
-    videoModel: 'google/veo-3.1-lite',
-    durationSeconds: 4,
+    description: PERFUME_BRIEF,
+    imageModel: 'black-forest-labs/flux-3-image-klein',
+    videoModel: 'heygen/heygen-video-1',
+    durationSeconds: 5,
     campaign: oudCampaign,
   },
 ];
 
-export const PRODUCT_ANCHOR_OPTIONS: readonly ProductAnchor[] = [
-  perfumeAnchor,
-  watchAnchor,
+export const PRODUCT_ANCHOR_OPTIONS: readonly ProductAnchorOption[] = [
+  { ...perfumeAnchor, defaultBrief: PERFUME_BRIEF },
+  { ...watchAnchor, defaultBrief: WATCH_BRIEF },
 ];

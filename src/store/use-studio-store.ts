@@ -12,18 +12,24 @@ import type {
   ShotResult,
 } from "@/domain/entities/campaign";
 import type {
+  ChatModelCapability,
   ImageModelCapability,
   VideoDurationSeconds,
   VideoModelCapability,
 } from "@/domain/entities/model-capabilities";
+import {
+  DEFAULT_SHOT_COUNT,
+  isShotCount,
+} from "@/domain/entities/shot-sequence";
 import type { VideoJobStatus } from "@/domain/ports/media-ports";
 import {
   DEFAULT_MAX_BUDGET_USD,
-  TONE_LABELS,
+  DEFAULT_SHOT_DURATION_SECONDS,
   clampBudget,
   formatCost,
   formatUsd,
   isStudioBusy,
+  snapDurationSeconds,
   type StudioStep,
 } from "@/lib/studio-utils";
 
@@ -37,7 +43,19 @@ export interface ShowcasePreset {
   campaign: CampaignState;
 }
 
+export interface ChatModelView extends ChatModelCapability {
+  estimatedCostPerPlanUsd: number;
+  estimatedCostPerQaUsd: number;
+}
+
+/** Anchor catalog entry with its auto-fill brief; never part of a campaign. */
+export interface ProductAnchorOption extends ProductAnchor {
+  defaultBrief?: string;
+}
+
 interface ModelDefaults {
+  textModel: string;
+  visionModel: string;
   imageModel: string;
   videoModel: string;
   aspectRatio: AspectRatio;
@@ -46,14 +64,26 @@ interface ModelDefaults {
 }
 
 interface ModelsResponse {
+  textModels: ChatModelView[];
+  visionModels: ChatModelView[];
   imageModels: ImageModelCapability[];
   videoModels: VideoModelCapability[];
   defaults: ModelDefaults;
+  catalog?: {
+    source: "snapshot" | "live";
+    refreshedAt: string | null;
+  };
 }
 
 interface PresetsResponse {
   presets: ShowcasePreset[];
-  productAnchors: ProductAnchor[];
+  productAnchors: ProductAnchorOption[];
+}
+
+interface BriefDraftResponse {
+  brief: string;
+  costUsd: number;
+  model: string;
 }
 
 interface CampaignResponse {
@@ -77,28 +107,42 @@ interface VideoStatusUpdate {
 
 type CatalogStatus = "idle" | "loading" | "ready" | "error";
 
+export type MobileStudioTab = "create" | "storyboard" | "player" | "finops";
+export type TabletStudioTab = "storyboard" | "player";
+
 interface StudioState {
   mode: ExecutionMode;
   aspectRatio: AspectRatio;
   tone: BrandTone;
   product: ProductAnchor;
   userGoal: string;
+  selectedTextModel: string;
+  selectedVisionModel: string;
   selectedImageModel: string;
   selectedVideoModel: string;
+  shotCount: number;
+  durationSeconds: VideoDurationSeconds;
   maxBudgetUsd: number;
+  textModels: ChatModelView[];
+  visionModels: ChatModelView[];
   imageModels: ImageModelCapability[];
   videoModels: VideoModelCapability[];
   presets: ShowcasePreset[];
-  productAnchors: ProductAnchor[];
+  productAnchors: ProductAnchorOption[];
   catalogStatus: CatalogStatus;
   catalogError: string | null;
+  isRefreshingCatalog: boolean;
+  isGeneratingBrief: boolean;
   campaign: CampaignState | null;
   activeStep: StudioStep;
   errorMessage: string | null;
   showAdOverlay: boolean;
-  activePlayerShot: 1 | 2 | 3;
+  activePlayerShot: number;
+  mobileTab: MobileStudioTab;
+  tabletRightTab: TabletStudioTab;
 
   loadInitialCatalog: () => Promise<void>;
+  refreshCatalog: () => Promise<void>;
   loadPreset: (presetId: string) => void;
   runPlan: () => Promise<void>;
   runKeyframes: () => Promise<void>;
@@ -113,11 +157,18 @@ interface StudioState {
   setProduct: (product: ProductAnchor) => void;
   updateProduct: (patch: Partial<ProductAnchor>) => void;
   setUserGoal: (userGoal: string) => void;
+  generateCreativeBrief: () => Promise<void>;
+  setSelectedTextModel: (modelId: string) => void;
+  setSelectedVisionModel: (modelId: string) => void;
   setSelectedImageModel: (modelId: string) => void;
   setSelectedVideoModel: (modelId: string) => void;
+  setShotCount: (value: number) => void;
+  setDurationSeconds: (value: VideoDurationSeconds) => void;
   setMaxBudgetUsd: (value: number) => void;
   setShowAdOverlay: (value: boolean) => void;
-  setActivePlayerShot: (shot: 1 | 2 | 3) => void;
+  setActivePlayerShot: (shot: number) => void;
+  setMobileTab: (tab: MobileStudioTab) => void;
+  setTabletRightTab: (tab: TabletStudioTab) => void;
   updateAdCopy: (field: keyof AdCopy, value: string) => void;
 }
 
@@ -127,8 +178,20 @@ const DEFAULT_PRODUCT: ProductAnchor = {
   imageUrl: "/fixtures/perfume-anchor.jpeg",
 };
 
-const DEFAULT_IMAGE_MODEL_ID = "google/gemini-2.5-flash-image";
-const DEFAULT_VIDEO_MODEL_ID = "bytedance/seedance-2.0-fast";
+const DEFAULT_TEXT_MODEL_ID = "deepseek/deepseek-v4.1-flash";
+const DEFAULT_VISION_QA_MODEL_ID = "deepseek/deepseek-v4.1-flash";
+const DEFAULT_IMAGE_MODEL_ID = "black-forest-labs/flux-3-image";
+const DEFAULT_VIDEO_MODEL_ID = "heygen/heygen-video-1";
+
+function resolveVideoDuration(
+  videoModels: readonly VideoModelCapability[],
+  videoModelId: string,
+  preferred: VideoDurationSeconds,
+): VideoDurationSeconds {
+  const model = videoModels.find((item) => item.id === videoModelId);
+  if (!model) return preferred;
+  return snapDurationSeconds(preferred, model.supportedDurations);
+}
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let pollWake: (() => void) | null = null;
@@ -309,13 +372,18 @@ function presetState(preset: ShowcasePreset): Partial<StudioState> {
     product: { ...preset.campaign.product },
     selectedImageModel: preset.imageModel,
     selectedVideoModel: preset.videoModel,
+    shotCount: preset.campaign.shots.length,
+    durationSeconds: preset.durationSeconds,
     maxBudgetUsd: preset.campaign.ledger.maxBudgetUsd,
     userGoal: preset.description,
+    isGeneratingBrief: false,
     campaign: preset.campaign,
     activeStep: "completed",
     errorMessage: null,
-    showAdOverlay: true,
+    showAdOverlay: false,
     activePlayerShot: 1,
+    mobileTab: "storyboard",
+    tabletRightTab: "storyboard",
   };
 }
 
@@ -392,6 +460,8 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       activeStep: "planning",
       errorMessage: null,
       activePlayerShot: 1,
+      // Mobile users should watch the brief, keyframes and QA populate live.
+      mobileTab: "storyboard",
     });
 
     const payload = await requestJson<CampaignResponse>(
@@ -402,8 +472,11 @@ export const useStudioStore = create<StudioState>()((set, get) => {
           product: state.product,
           tone: state.tone,
           aspectRatio: state.aspectRatio,
+          textModel: state.selectedTextModel,
           imageModel: state.selectedImageModel,
           videoModel: state.selectedVideoModel,
+          shotCount: state.shotCount,
+          durationSeconds: state.durationSeconds,
           maxBudgetUsd: state.maxBudgetUsd,
           userGoal:
             state.userGoal.trim() === "" ? undefined : state.userGoal.trim(),
@@ -437,6 +510,7 @@ export const useStudioStore = create<StudioState>()((set, get) => {
         body: JSON.stringify({
           campaign,
           imageModel: get().selectedImageModel,
+          visionModel: get().selectedVisionModel,
           // Hard product rule: Vision QA may retry at most once per shot.
           maxRetries: 1,
         }),
@@ -458,11 +532,11 @@ export const useStudioStore = create<StudioState>()((set, get) => {
     }
 
     if (
-      campaign.results.length !== 3 ||
+      campaign.results.length !== campaign.shots.length ||
       campaign.results.some((result) => result.keyframeUrl.trim() === "")
     ) {
       throw new Error(
-        "Generate all three keyframes before rendering video. Run step 2 first.",
+        "Generate all keyframes before rendering video. Run step 2 first.",
       );
     }
 
@@ -475,6 +549,7 @@ export const useStudioStore = create<StudioState>()((set, get) => {
         body: JSON.stringify({
           campaign,
           videoModel: get().selectedVideoModel,
+          durationSeconds: get().durationSeconds,
         }),
       },
     );
@@ -491,7 +566,7 @@ export const useStudioStore = create<StudioState>()((set, get) => {
   function assessVideoTerminal(): VideoTerminalAssessment {
     const campaign = get().campaign;
 
-    if (!campaign || campaign.results.length !== 3) {
+    if (!campaign || campaign.results.length !== campaign.shots.length) {
       return "cancelled";
     }
 
@@ -524,12 +599,6 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       activeStep: "completed",
       errorMessage: null,
       activePlayerShot: 1,
-    });
-    toast.success("Campaign complete", {
-      description: `All three shots are ready. ${formatCost(
-        campaign.ledger.totalUsd,
-      )} of ${formatUsd(campaign.ledger.maxBudgetUsd)} used.`,
-      duration: 6000,
     });
     return "completed";
   }
@@ -636,20 +705,30 @@ export const useStudioStore = create<StudioState>()((set, get) => {
     tone: "luxury-editorial",
     product: DEFAULT_PRODUCT,
     userGoal: "",
+    selectedTextModel: DEFAULT_TEXT_MODEL_ID,
+    selectedVisionModel: DEFAULT_VISION_QA_MODEL_ID,
     selectedImageModel: DEFAULT_IMAGE_MODEL_ID,
     selectedVideoModel: DEFAULT_VIDEO_MODEL_ID,
+    shotCount: DEFAULT_SHOT_COUNT,
+    durationSeconds: DEFAULT_SHOT_DURATION_SECONDS,
     maxBudgetUsd: DEFAULT_MAX_BUDGET_USD,
+    textModels: [],
+    visionModels: [],
     imageModels: [],
     videoModels: [],
     presets: [],
     productAnchors: [],
     catalogStatus: "idle",
     catalogError: null,
+    isRefreshingCatalog: false,
+    isGeneratingBrief: false,
     campaign: null,
     activeStep: "idle",
     errorMessage: null,
-    showAdOverlay: true,
+    showAdOverlay: false,
     activePlayerShot: 1,
+    mobileTab: "create",
+    tabletRightTab: "storyboard",
 
     loadInitialCatalog: async () => {
       const currentStatus = get().catalogStatus;
@@ -663,6 +742,18 @@ export const useStudioStore = create<StudioState>()((set, get) => {
           requestJson<PresetsResponse>("/api/presets"),
         ]);
 
+        const textModelId = models.textModels.some(
+          (model) => model.id === models.defaults.textModel,
+        )
+          ? models.defaults.textModel
+          : (models.textModels[0]?.id ?? DEFAULT_TEXT_MODEL_ID);
+
+        const visionModelId = models.visionModels.some(
+          (model) => model.id === models.defaults.visionModel,
+        )
+          ? models.defaults.visionModel
+          : (models.visionModels[0]?.id ?? DEFAULT_VISION_QA_MODEL_ID);
+
         const imageModelId = models.imageModels.some(
           (model) => model.id === models.defaults.imageModel,
         )
@@ -675,15 +766,26 @@ export const useStudioStore = create<StudioState>()((set, get) => {
           ? models.defaults.videoModel
           : (models.videoModels[0]?.id ?? DEFAULT_VIDEO_MODEL_ID);
 
+        const durationSeconds = resolveVideoDuration(
+          models.videoModels,
+          videoModelId,
+          models.defaults.durationSeconds,
+        );
+
         const catalogPatch: Partial<StudioState> = {
           catalogStatus: "ready",
           catalogError: null,
+          textModels: models.textModels,
+          visionModels: models.visionModels,
           imageModels: models.imageModels,
           videoModels: models.videoModels,
           presets: presetPayload.presets,
           productAnchors: presetPayload.productAnchors,
+          selectedTextModel: textModelId,
+          selectedVisionModel: visionModelId,
           selectedImageModel: imageModelId,
           selectedVideoModel: videoModelId,
+          durationSeconds,
           aspectRatio: models.defaults.aspectRatio,
           maxBudgetUsd: clampBudget(models.defaults.maxBudgetUsd),
         };
@@ -698,7 +800,16 @@ export const useStudioStore = create<StudioState>()((set, get) => {
           const defaultAnchor = presetPayload.productAnchors[0];
           set({
             ...catalogPatch,
-            ...(defaultAnchor ? { product: defaultAnchor } : {}),
+            ...(defaultAnchor
+              ? {
+                  product: {
+                    name: defaultAnchor.name,
+                    category: defaultAnchor.category,
+                    imageUrl: defaultAnchor.imageUrl,
+                  },
+                  userGoal: defaultAnchor.defaultBrief ?? "",
+                }
+              : {}),
           });
         }
       } catch (error) {
@@ -710,6 +821,97 @@ export const useStudioStore = create<StudioState>()((set, get) => {
         set({ catalogStatus: "error", catalogError: message });
         toast.error("Catalog unavailable", {
           description: message,
+          duration: 7000,
+        });
+      }
+    },
+
+    refreshCatalog: async () => {
+      if (get().isRefreshingCatalog) return;
+
+      set({ isRefreshingCatalog: true });
+
+      try {
+        const models = await requestJson<ModelsResponse>(
+          "/api/models?refresh=true",
+        );
+        const state = get();
+
+        const textModelId = models.textModels.some(
+          (model) => model.id === state.selectedTextModel,
+        )
+          ? state.selectedTextModel
+          : models.textModels.some(
+                (model) => model.id === models.defaults.textModel,
+              )
+            ? models.defaults.textModel
+            : (models.textModels[0]?.id ?? DEFAULT_TEXT_MODEL_ID);
+
+        const visionModelId = models.visionModels.some(
+          (model) => model.id === state.selectedVisionModel,
+        )
+          ? state.selectedVisionModel
+          : models.visionModels.some(
+                (model) => model.id === models.defaults.visionModel,
+              )
+            ? models.defaults.visionModel
+            : (models.visionModels[0]?.id ?? DEFAULT_VISION_QA_MODEL_ID);
+
+        const imageModelId = models.imageModels.some(
+          (model) => model.id === state.selectedImageModel,
+        )
+          ? state.selectedImageModel
+          : models.imageModels.some(
+                (model) => model.id === models.defaults.imageModel,
+              )
+            ? models.defaults.imageModel
+            : (models.imageModels[0]?.id ?? DEFAULT_IMAGE_MODEL_ID);
+
+        const videoModelId = models.videoModels.some(
+          (model) => model.id === state.selectedVideoModel,
+        )
+          ? state.selectedVideoModel
+          : models.videoModels.some(
+                (model) => model.id === models.defaults.videoModel,
+              )
+            ? models.defaults.videoModel
+            : (models.videoModels[0]?.id ?? DEFAULT_VIDEO_MODEL_ID);
+
+        const durationSeconds = resolveVideoDuration(
+          models.videoModels,
+          videoModelId,
+          state.durationSeconds,
+        );
+
+        set({
+          textModels: models.textModels,
+          visionModels: models.visionModels,
+          imageModels: models.imageModels,
+          videoModels: models.videoModels,
+          selectedTextModel: textModelId,
+          selectedVisionModel: visionModelId,
+          selectedImageModel: imageModelId,
+          selectedVideoModel: videoModelId,
+          durationSeconds,
+          catalogStatus: "ready",
+          catalogError: null,
+          isRefreshingCatalog: false,
+        });
+
+        if (models.catalog?.source !== "live") {
+          toast.warning("Live catalog unreachable", {
+            description:
+              "OpenRouter did not respond. The curated models-snapshot.json catalog stays active.",
+            duration: 5000,
+          });
+        }
+      } catch (error) {
+        set({ isRefreshingCatalog: false });
+        toast.error("Live capability refresh failed", {
+          description:
+            error instanceof Error
+              ? error.message
+              : "The live model catalog could not be loaded.",
           duration: 7000,
         });
       }
@@ -736,11 +938,6 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
       cancelWorkflow();
       set(presetState(preset));
-
-      toast.success("Showcase preset loaded", {
-        description: `${preset.name} is ready to preview with three completed clips.`,
-        duration: 4000,
-      });
     },
 
     runPlan: async () => {
@@ -755,14 +952,8 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       const epoch = startWorkflow();
 
       try {
-        const campaign = await planCampaignStep(epoch);
+        await planCampaignStep(epoch);
         assertActive(epoch);
-        toast.success("Campaign blueprint ready", {
-          description: `${campaign.shots.length} shots planned · ${
-            TONE_LABELS[campaign.tone]
-          }.`,
-          duration: 4000,
-        });
       } catch (error) {
         if (epoch !== workflowEpoch) return;
         fail(error, "Campaign planning failed");
@@ -781,7 +972,7 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       if (!get().campaign) {
         toast.info("Plan the campaign first", {
           description:
-            "Run step 1 so the creative director can define the three shots.",
+            "Run step 1 so the creative director can define the shots.",
         });
         return;
       }
@@ -789,20 +980,8 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       const epoch = startWorkflow();
 
       try {
-        const campaign = await generateKeyframesStep(epoch);
+        await generateKeyframesStep(epoch);
         assertActive(epoch);
-
-        const healed = campaign.results.filter(
-          (result) => result.wasRetried,
-        ).length;
-
-        toast.success("Keyframes ready", {
-          description:
-            healed > 0
-              ? `3/3 frames cleared Vision QA · ${healed} self-healed on the first retry.`
-              : "3/3 frames cleared Vision QA with no product drift detected.",
-          duration: 5000,
-        });
       } catch (error) {
         if (epoch !== workflowEpoch) return;
         fail(error, "Keyframe generation failed");
@@ -829,12 +1008,12 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       }
 
       if (
-        campaign.results.length !== 3 ||
+        campaign.results.length !== campaign.shots.length ||
         campaign.results.some((result) => result.keyframeUrl === "")
       ) {
         toast.info("Keyframes are missing", {
           description:
-            "Run step 2 and clear all three Vision QA checks before rendering video.",
+            "Run step 2 and clear every Vision QA check before rendering video.",
         });
         return;
       }
@@ -862,12 +1041,6 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
       const epoch = startWorkflow();
 
-      toast.info("Full pipeline started", {
-        description:
-          "Plan → keyframes → Vision QA → video submission → render polling.",
-        duration: 3000,
-      });
-
       try {
         await planCampaignStep(epoch);
         assertActive(epoch);
@@ -888,12 +1061,9 @@ export const useStudioStore = create<StudioState>()((set, get) => {
         campaign: null,
         activeStep: "idle",
         errorMessage: null,
+        showAdOverlay: false,
         activePlayerShot: 1,
-      });
-      toast.success("Campaign reset", {
-        description:
-          "The active campaign was cleared. Configuration is preserved for the next run.",
-        duration: 3500,
+        isGeneratingBrief: false,
       });
     },
 
@@ -930,12 +1100,43 @@ export const useStudioStore = create<StudioState>()((set, get) => {
       set({ aspectRatio });
     },
 
+    setShotCount: (value) => {
+      if (!isShotCount(value)) return;
+      set({ shotCount: value });
+    },
+
     setTone: (tone) => {
       set({ tone });
     },
 
     setProduct: (product) => {
-      set({ product });
+      const state = get();
+      const nextProduct: ProductAnchor = {
+        name: product.name,
+        category: product.category,
+        imageUrl: product.imageUrl,
+      };
+      const anchor = state.productAnchors.find(
+        (option) => option.imageUrl === nextProduct.imageUrl,
+      );
+      const currentBriefIsAuto = state.productAnchors.some(
+        (option) =>
+          option.defaultBrief !== undefined &&
+          option.defaultBrief === state.userGoal,
+      );
+
+      // Re-selecting the active anchor restores its metadata without throwing
+      // away a brief the user has edited by hand.
+      if (state.product.imageUrl === nextProduct.imageUrl) {
+        set({ product: nextProduct });
+        return;
+      }
+
+      set({
+        product: nextProduct,
+        userGoal:
+          anchor?.defaultBrief ?? (currentBriefIsAuto ? "" : state.userGoal),
+      });
     },
 
     updateProduct: (patch) => {
@@ -944,6 +1145,90 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
     setUserGoal: (userGoal) => {
       set({ userGoal: userGoal.slice(0, 500) });
+    },
+
+    generateCreativeBrief: async () => {
+      const state = get();
+
+      if (state.isGeneratingBrief) return;
+
+      if (isStudioBusy(state.activeStep)) {
+        toast.info("Pipeline in progress", {
+          description:
+            "Wait for the active stage to finish before drafting a new brief.",
+          duration: 4000,
+        });
+        return;
+      }
+
+      if (
+        state.product.name.trim() === "" ||
+        state.product.category.trim() === ""
+      ) {
+        toast.error("Product context missing", {
+          description:
+            "Add a product name and category so the brief has something real to work from.",
+          duration: 6000,
+        });
+        return;
+      }
+
+      const epoch = workflowEpoch;
+      set({ isGeneratingBrief: true });
+
+      try {
+        const payload = await requestJson<BriefDraftResponse>(
+          "/api/campaigns/brief",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              product: state.product,
+              tone: state.tone,
+              aspectRatio: state.aspectRatio,
+              shotCount: state.shotCount,
+              maxBudgetUsd: state.maxBudgetUsd,
+              mode: state.mode,
+            }),
+          },
+        );
+
+        if (epoch !== workflowEpoch) {
+          set({ isGeneratingBrief: false });
+          return;
+        }
+
+        set({
+          userGoal: payload.brief.slice(0, 500),
+          isGeneratingBrief: false,
+        });
+      } catch (error) {
+        if (epoch !== workflowEpoch) {
+          set({ isGeneratingBrief: false });
+          return;
+        }
+
+        set({ isGeneratingBrief: false });
+
+        const description =
+          error instanceof StudioApiError && error.status === 402
+            ? describeBudgetError(error)
+            : error instanceof Error && error.message.trim() !== ""
+              ? error.message
+              : "The brief could not be drafted.";
+
+        toast.error("Creative brief failed", {
+          description,
+          duration: 7000,
+        });
+      }
+    },
+
+    setSelectedTextModel: (modelId) => {
+      set({ selectedTextModel: modelId });
+    },
+
+    setSelectedVisionModel: (modelId) => {
+      set({ selectedVisionModel: modelId });
     },
 
     setSelectedImageModel: (modelId) => {
@@ -992,32 +1277,55 @@ export const useStudioStore = create<StudioState>()((set, get) => {
         return;
       }
 
+      const nextDuration = resolveVideoDuration(
+        state.videoModels,
+        modelId,
+        state.durationSeconds,
+      );
+      const patch: Partial<StudioState> = {
+        selectedVideoModel: modelId,
+        durationSeconds: nextDuration,
+      };
+
       if (model.supportedAspectRatios.includes(state.aspectRatio)) {
-        set({ selectedVideoModel: modelId });
-        return;
+        set(patch);
+      } else {
+        const imageModel = state.imageModels.find(
+          (item) => item.id === state.selectedImageModel,
+        );
+        const commonRatio = model.supportedAspectRatios.find(
+          (ratio) =>
+            !imageModel || imageModel.supportedAspectRatios.includes(ratio),
+        );
+
+        if (commonRatio) {
+          set({ ...patch, aspectRatio: commonRatio });
+          toast.info("Aspect ratio adjusted", {
+            description: `${model.label} does not support ${state.aspectRatio}. Switched to ${commonRatio}.`,
+            duration: 4000,
+          });
+        } else {
+          set(patch);
+        }
       }
 
-      const imageModel = state.imageModels.find(
-        (item) => item.id === state.selectedImageModel,
-      );
-      const commonRatio = model.supportedAspectRatios.find(
-        (ratio) =>
-          !imageModel || imageModel.supportedAspectRatios.includes(ratio),
-      );
-
-      if (commonRatio) {
-        set({
-          selectedVideoModel: modelId,
-          aspectRatio: commonRatio,
-        });
-        toast.info("Aspect ratio adjusted", {
-          description: `${model.label} does not support ${state.aspectRatio}. Switched to ${commonRatio}.`,
+      if (nextDuration !== state.durationSeconds) {
+        toast.info("Duration adjusted", {
+          description: `${model.label} does not support ${state.durationSeconds}s clips. Switched to ${nextDuration}s.`,
           duration: 4000,
         });
-        return;
       }
+    },
 
-      set({ selectedVideoModel: modelId });
+    setDurationSeconds: (value) => {
+      const state = get();
+      const model = state.videoModels.find(
+        (item) => item.id === state.selectedVideoModel,
+      );
+
+      if (model && !model.supportedDurations.includes(value)) return;
+
+      set({ durationSeconds: value });
     },
 
     setMaxBudgetUsd: (value) => {
@@ -1030,6 +1338,14 @@ export const useStudioStore = create<StudioState>()((set, get) => {
 
     setActivePlayerShot: (shot) => {
       set({ activePlayerShot: shot });
+    },
+
+    setMobileTab: (mobileTab) => {
+      set({ mobileTab });
+    },
+
+    setTabletRightTab: (tabletRightTab) => {
+      set({ tabletRightTab });
     },
 
     updateAdCopy: (field, value) => {

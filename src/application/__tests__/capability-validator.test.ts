@@ -27,6 +27,8 @@ const videoModelWithoutLastFrame: VideoModelCapability = {
   supportsInputReferences: false,
   maxInputReferences: 0,
   supportedDurations: [4],
+  supportedResolutions: ['480p', '720p'],
+  supportedFrameImages: ['first_frame'],
   supportsLastFrame: false,
   estimatedCostPerSecondUsd: 0.05,
 };
@@ -34,6 +36,7 @@ const videoModelWithoutLastFrame: VideoModelCapability = {
 const videoModelWithLastFrame: VideoModelCapability = {
   ...videoModelWithoutLastFrame,
   id: 'test/video-model-with-last-frame',
+  supportedFrameImages: ['first_frame', 'last_frame'],
   supportsLastFrame: true,
 };
 
