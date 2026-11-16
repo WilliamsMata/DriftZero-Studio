@@ -4,6 +4,7 @@ import { AssetUploadError } from '@/domain/errors/domain-errors';
 import {
   createMediaProviders,
   getExecutionMode,
+  hasBlobStorageToken,
 } from '@/infrastructure/config/provider-factory';
 import { getRequestedMode, jsonOk, toErrorResponse } from '../../_lib/http';
 
@@ -41,6 +42,10 @@ export async function POST(request: NextRequest) {
       sizeBytes: file.size,
       base64Data: Buffer.from(await file.arrayBuffer()).toString('base64'),
       mode,
+      // Deployed hybrid runs still need a public HTTPS anchor when Blob is
+      // configured; otherwise the campaign payload would carry a multi-MB data
+      // URI past the platform request body limit.
+      persistPublicly: hasBlobStorageToken(),
     });
 
     return jsonOk(result);

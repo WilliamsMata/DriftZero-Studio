@@ -2,7 +2,10 @@ import type { ExecutionMode } from '@/domain/entities/campaign';
 import { AssetUploadError } from '@/domain/errors/domain-errors';
 import type { AssetStoragePort } from '@/domain/ports/media-ports';
 
-export const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+// Vercel Functions reject request bodies above 4.5 MB. A 3 MB image becomes
+// ~4 MB as base64 when mock/hybrid campaigns carry it in the JSON payload, so
+// this cap keeps every request inside the platform limit.
+export const MAX_PRODUCT_IMAGE_BYTES = 3 * 1024 * 1024;
 
 const ALLOWED_CONTENT_TYPES: Readonly<Record<string, string>> = {
   'image/png': 'png',
@@ -20,6 +23,13 @@ export interface UploadProductAssetInput {
   /** Base64 payload without the `data:` prefix. */
   base64Data: string;
   mode: ExecutionMode;
+  /**
+   * Persist the anchor even outside `live` mode. Used when a public store
+   * (Vercel Blob) is configured: deployed `hybrid` runs cannot keep a data URI
+   * in the campaign payload because it would exceed the request body limit and
+   * would not be readable by the provider.
+   */
+  persistPublicly?: boolean;
 }
 
 export interface UploadProductAssetOutput {
@@ -56,9 +66,11 @@ function sanitizeUploadName(fileName: string, extension: string): string {
 /**
  * Normalizes a browser-uploaded product anchor.
  *
- * - `mock` / `hybrid`: returns a data URI so local runs need no deployment.
- * - `live`: persists through `AssetStoragePort` so OpenRouter receives a
- *   public HTTPS URL (Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set).
+ * - `mock`, and `hybrid` without a public store: returns a data URI so local
+ *   runs need no deployment.
+ * - `live`, or `hybrid` with `persistPublicly`: persists through
+ *   `AssetStoragePort` so OpenRouter and the browser receive a public HTTPS
+ *   URL (Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set).
  */
 export class UploadProductAssetUseCase {
   constructor(private readonly dependencies: UploadProductAssetDependencies) {}
@@ -125,7 +137,7 @@ export class UploadProductAssetUseCase {
       contentType === 'image/jpg' ? 'image/jpeg' : contentType;
     const dataUri = `data:${normalizedContentType};base64,${compactBase64}`;
 
-    if (input.mode !== 'live') {
+    if (input.mode !== 'live' && input.persistPublicly !== true) {
       return {
         imageUrl: dataUri,
         storage: 'data-uri',

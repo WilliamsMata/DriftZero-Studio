@@ -28,7 +28,7 @@ const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 describe('UploadProductAssetUseCase', () => {
-  it('returns a data URI for mock and hybrid runs without touching storage', async () => {
+  it('returns a data URI for runs without a public store', async () => {
     const storage = new FakeStorageAdapter();
     const useCase = new UploadProductAssetUseCase({ storage });
 
@@ -62,6 +62,26 @@ describe('UploadProductAssetUseCase', () => {
       'https://blob.example.com/campaign-assets/product-photo.png',
     );
     expect(storage.ensureCalls).toEqual(['product-photo.png']);
+  });
+
+  it('persists hybrid uploads when a public store is configured', async () => {
+    const storage = new FakeStorageAdapter();
+    const useCase = new UploadProductAssetUseCase({ storage });
+
+    const output = await useCase.execute({
+      fileName: 'my product.png',
+      contentType: 'image/png',
+      sizeBytes: 68,
+      base64Data: PNG_BASE64,
+      mode: 'hybrid',
+      persistPublicly: true,
+    });
+
+    expect(output.storage).toBe('public-url');
+    expect(output.imageUrl).toBe(
+      'https://blob.example.com/campaign-assets/my-product.png',
+    );
+    expect(storage.ensureCalls).toEqual(['my-product.png']);
   });
 
   it('rejects unsupported formats and oversized uploads', async () => {
