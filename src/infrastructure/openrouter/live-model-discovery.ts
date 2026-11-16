@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AspectRatio } from '@/domain/entities/campaign';
 import type {
   ImageModelCapability,
+  VideoAudioMode,
   VideoDurationSeconds,
   VideoFrameImageType,
   VideoModelCapability,
@@ -188,8 +189,10 @@ function deriveVideoCostPerSecond(
     const withAudio = key.includes('with_audio') || key.includes('with sound');
 
     let score = 0;
-    if (withAudio && !withoutAudio) score += 10;
-    if (withoutAudio) score -= 2;
+    // The studio requests audio whenever the model exposes the flag, so the
+    // with-audio SKU is the honest estimate. Without-audio SKUs are penalized.
+    if (withAudio && !withoutAudio) score -= 10;
+    if (withoutAudio) score += 10;
     if (matchesResolution) score -= 4;
     else score += 2;
 
@@ -320,6 +323,16 @@ function enrichVideoModel(
   );
   const frameImages = filterFrameImages(live.supported_frame_images ?? []);
 
+  // `generate_audio: true` means the request flag is supported. When OpenRouter
+  // reports false/null the flag is not accepted; keep the curated behaviour
+  // (HeyGen always renders audio) instead of guessing.
+  const audioMode: VideoAudioMode =
+    live.generate_audio === true
+      ? 'optional'
+      : base.audioMode === 'always' || base.audioMode === 'none'
+        ? base.audioMode
+        : 'unknown';
+
   const effectiveResolutions =
     resolutions.length > 0 ? resolutions : base.supportedResolutions;
   const livePrice = deriveVideoCostPerSecond(
@@ -341,6 +354,7 @@ function enrichVideoModel(
       frameImages.length > 0
         ? frameImages.includes('last_frame')
         : base.supportsLastFrame,
+    audioMode,
     estimatedCostPerSecondUsd:
       livePrice !== undefined ? livePrice : base.estimatedCostPerSecondUsd,
   };

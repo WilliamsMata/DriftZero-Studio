@@ -52,6 +52,7 @@ const videoModel: VideoModelCapability = {
   supportedResolutions: ['480p'],
   supportedFrameImages: ['first_frame'],
   supportsLastFrame: false,
+  audioMode: 'none',
   estimatedCostPerSecondUsd: 0.02,
 };
 

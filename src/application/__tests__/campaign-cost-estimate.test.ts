@@ -36,6 +36,7 @@ const heyGen: VideoModelCapability = {
   supportedResolutions: ['480p'],
   supportedFrameImages: ['first_frame'],
   supportsLastFrame: false,
+  audioMode: 'none',
   estimatedCostPerSecondUsd: 0.02,
 };
 

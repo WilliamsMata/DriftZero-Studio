@@ -132,6 +132,7 @@
       "supportedResolutions": ["480p", "768p", "1080p", "2K"],
       "supportedFrameImages": ["first_frame"],
       "supportsLastFrame": false,
+      "audioMode": "always",
       "estimatedCostPerSecondUsd": 0.02
     },
     {
@@ -145,7 +146,8 @@
       "supportedResolutions": ["720p", "1080p"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
-      "estimatedCostPerSecondUsd": 0.03
+      "audioMode": "optional",
+      "estimatedCostPerSecondUsd": 0.05
     },
     {
       "id": "x-ai/grok-imagine-video-1.5-lite",
@@ -158,6 +160,7 @@
       "supportedResolutions": ["480p", "720p", "1080p"],
       "supportedFrameImages": ["first_frame"],
       "supportsLastFrame": false,
+      "audioMode": "unknown",
       "estimatedCostPerSecondUsd": 0.02
     },
     {
@@ -171,6 +174,7 @@
       "supportedResolutions": ["480p", "720p"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
+      "audioMode": "optional",
       "estimatedCostPerSecondUsd": 0.03
     },
     {
@@ -184,6 +188,7 @@
       "supportedResolutions": ["480p", "720p", "1080p"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
+      "audioMode": "optional",
       "estimatedCostPerSecondUsd": 0.05
     },
     {
@@ -197,6 +202,7 @@
       "supportedResolutions": ["480p", "768p"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
+      "audioMode": "unknown",
       "estimatedCostPerSecondUsd": 0.05
     },
     {
@@ -210,6 +216,7 @@
       "supportedResolutions": ["360p", "720p", "1080p", "4K"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
+      "audioMode": "optional",
       "estimatedCostPerSecondUsd": 0.069504
     },
     {
@@ -223,7 +230,8 @@
       "supportedResolutions": ["720p", "1080p", "4K"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
-      "estimatedCostPerSecondUsd": 0.08
+      "audioMode": "optional",
+      "estimatedCostPerSecondUsd": 0.1
     },
     {
       "id": "google/veo-3.1",
@@ -236,7 +244,8 @@
       "supportedResolutions": ["720p", "1080p", "4K"],
       "supportedFrameImages": ["first_frame", "last_frame"],
       "supportsLastFrame": true,
-      "estimatedCostPerSecondUsd": 0.2
+      "audioMode": "optional",
+      "estimatedCostPerSecondUsd": 0.4
     }
   ]
 }

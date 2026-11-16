@@ -30,6 +30,7 @@ const videoModelWithoutLastFrame: VideoModelCapability = {
   supportedResolutions: ['480p', '720p'],
   supportedFrameImages: ['first_frame'],
   supportsLastFrame: false,
+  audioMode: 'none',
   estimatedCostPerSecondUsd: 0.05,
 };
 

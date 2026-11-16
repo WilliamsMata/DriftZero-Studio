@@ -33,6 +33,7 @@ const videoModel: VideoModelCapability = {
   supportedResolutions: ['720p'],
   supportedFrameImages: ['first_frame'],
   supportsLastFrame: false,
+  audioMode: 'none',
   estimatedCostPerSecondUsd: 0.02,
 };
 

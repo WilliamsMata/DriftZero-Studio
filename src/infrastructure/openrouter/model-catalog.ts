@@ -28,6 +28,7 @@ const videoResolutionSchema = z.enum([
   '4K',
 ]);
 const videoFrameImageSchema = z.enum(['first_frame', 'last_frame']);
+const videoAudioModeSchema = z.enum(['always', 'optional', 'none', 'unknown']);
 
 const chatModelCapabilitySchema = z.object({
   id: z.string().min(1),
@@ -60,6 +61,7 @@ const videoModelCapabilitySchema = z.object({
   supportedResolutions: z.array(videoResolutionSchema).min(1),
   supportedFrameImages: z.array(videoFrameImageSchema).min(1),
   supportsLastFrame: z.boolean(),
+  audioMode: videoAudioModeSchema,
   estimatedCostPerSecondUsd: z.number().nonnegative(),
 });
 

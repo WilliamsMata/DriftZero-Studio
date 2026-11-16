@@ -26,6 +26,16 @@ export type VideoResolution =
 export type VideoFrameImageType = 'first_frame' | 'last_frame';
 
 /**
+ * Audio behavior advertised by OpenRouter:
+ * - `always`: the model always renders an audio track and `generate_audio`
+ *   cannot be disabled (for example HeyGen Video 1).
+ * - `optional`: `generate_audio` is supported and can be toggled.
+ * - `none`: the model never renders audio.
+ * - `unknown`: the provider does not advertise its audio behavior.
+ */
+export type VideoAudioMode = 'always' | 'optional' | 'none' | 'unknown';
+
+/**
  * OpenRouter reasoning-effort hint. Low is the Studio default for existing
  * models; Muse Ember is configured as `high` because it degrades badly at low.
  */
@@ -65,5 +75,8 @@ export interface VideoModelCapability {
   supportedResolutions: VideoResolution[];
   supportedFrameImages: VideoFrameImageType[];
   supportsLastFrame: boolean;
+  /** Audio behavior; `optional` means the request flag is supported. */
+  audioMode: VideoAudioMode;
+  /** Estimated USD per second including the audio track when supported. */
   estimatedCostPerSecondUsd: number;
 }
