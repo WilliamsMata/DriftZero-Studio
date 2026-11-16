@@ -1,6 +1,5 @@
 "use client";
 
-import { ShieldCheck } from "lucide-react";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import {
   CampaignConfigPanel,
