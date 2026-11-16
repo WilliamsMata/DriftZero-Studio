@@ -16,6 +16,7 @@ const videoModel: VideoModelCapability = {
   supportedResolutions: ['720p', '480p', '1080p'],
   supportedFrameImages: ['first_frame', 'last_frame'],
   supportsLastFrame: true,
+  audioMode: 'optional',
   estimatedCostPerSecondUsd: 0.03,
 };
 
@@ -52,7 +53,7 @@ function createAdapter(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
 }
 
 describe('OpenRouterVideoAdapter', () => {
-  it('forces generate_audio: false and formats frame_images with frame_type', async () => {
+  it('requests audio when the model supports the flag and formats frame_images', async () => {
     const fetchMock = vi.fn<typeof fetch>();
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'job-123' }));
 
@@ -76,7 +77,7 @@ describe('OpenRouterVideoAdapter', () => {
     expect(body.model).toBe(videoModel.id);
     expect(body.aspect_ratio).toBe('9:16');
     expect(body.duration).toBe(4);
-    expect(body.generate_audio).toBe(false);
+    expect(body.generate_audio).toBe(true);
     // 480p is the cost-safe tier even though the model lists 720p first.
     expect(body.resolution).toBe('480p');
     expect(body.frame_images).toEqual([
@@ -94,6 +95,42 @@ describe('OpenRouterVideoAdapter', () => {
 
     expect(submission.jobId).toBe('job-123');
     expect(submission.estimatedCostUsd).toBe(0.12);
+  });
+
+  it('omits generate_audio for models that cannot toggle audio', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'job-789' }));
+
+    const alwaysAudioModel: VideoModelCapability = {
+      ...videoModel,
+      id: 'test/always-audio-model',
+      audioMode: 'always',
+    };
+
+    const adapter = new OpenRouterVideoAdapter({
+      client: new OpenRouterClient({
+        apiKey: 'test-key',
+        mode: 'live',
+        fetchImpl: fetchMock,
+      }),
+      catalog: {
+        ...catalog,
+        listVideoModels: () => [alwaysAudioModel],
+        getVideoModel: (modelId) =>
+          modelId === alwaysAudioModel.id ? alwaysAudioModel : undefined,
+      },
+    });
+
+    await adapter.submitImageToVideo({
+      prompt: 'Always-on audio track',
+      firstFrameUrl: 'https://blob.example.com/first.png',
+      aspectRatio: '9:16',
+      durationSeconds: 4,
+      model: alwaysAudioModel.id,
+    });
+
+    const body = readBody(fetchMock.mock.calls[0]?.[1]);
+    expect(Object.hasOwn(body, 'generate_audio')).toBe(false);
   });
 
   it('omits last_frame when the model does not support it', async () => {

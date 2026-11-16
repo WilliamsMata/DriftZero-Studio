@@ -184,22 +184,28 @@ export class OpenRouterVideoAdapter implements VideoGenPort {
     }
 
     const resolution = pickCostSafeResolution(model);
+    const requestBody: Record<string, unknown> = {
+      model: input.model,
+      prompt: input.prompt,
+      aspect_ratio: input.aspectRatio,
+      duration: input.durationSeconds,
+      resolution,
+      frame_images: frameImages,
+    };
+
+    // OpenRouter rejects `generate_audio` for models that do not expose the
+    // flag (HeyGen always renders an audio track, for example). Only send it
+    // when the catalog says the model supports toggling, and request audio
+    // because the final cut is played with sound in the studio.
+    if (model.audioMode === 'optional') {
+      requestBody.generate_audio = true;
+    }
 
     const rawResponse = await this.client.requestJson<unknown>(
       '/videos',
       {
         method: 'POST',
-        body: JSON.stringify({
-          model: input.model,
-          prompt: input.prompt,
-          aspect_ratio: input.aspectRatio,
-          duration: input.durationSeconds,
-          // Critical cost guardrail: audio-capable models default to true and
-          // would double-bill every render.
-          generate_audio: false,
-          resolution,
-          frame_images: frameImages,
-        }),
+        body: JSON.stringify(requestBody),
       },
       60_000,
     );
