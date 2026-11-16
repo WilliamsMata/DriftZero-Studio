@@ -27,6 +27,28 @@ creative director receives the product anchor photo with every planning call;
 text-only models are excluded from the selector and rejected by the API. The
 brief is text-only, so its model may be text-only.
 
+## Audio
+
+Video models differ in how they handle audio, and the studio adapts the request
+to each capability:
+
+| `audioMode` | Behavior | Request |
+| --- | --- | --- |
+| `always` | Audio is always rendered; the provider rejects `generate_audio` | Flag omitted (e.g. HeyGen Video 1) |
+| `optional` | `generate_audio` is supported | `generate_audio: true` |
+| `none` | The model never renders audio | Flag omitted |
+| `unknown` | Provider does not advertise it | Flag omitted |
+
+Audio can change the price. Veo 3.1 doubles its per-second cost with audio
+($0.20 → $0.40 at 720p), while Seedance, Wan and HeyGen include it in the same
+SKU. `estimatedCostPerSecondUsd` always reflects the audio-inclusive price when
+the model supports audio, so the estimate card and `BudgetGuardrail` stay
+honest.
+
+The curated snapshot encodes `audioMode` per model; `?refresh=true` upgrades a
+model to `optional` when OpenRouter reports `generate_audio: true`, and keeps
+the curated `always`/`none` value otherwise.
+
 ## Reasoning and output limits
 
 Chat requests deliberately omit `max_tokens`. Capping output caused reasoning

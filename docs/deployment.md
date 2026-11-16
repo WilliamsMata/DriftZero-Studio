@@ -126,6 +126,10 @@ The app is a standard Next.js server and runs on Railway without code changes:
   uploads are capped at 3 MB, and `hybrid` runs persist the anchor to Blob when
   a token is available so the campaign payload never carries a multi-MB data
   URI.
+- **Audio.** Models that support the `generate_audio` flag are rendered with
+  audio, and their per-second estimate uses the with-audio SKU. Models that
+  always render audio (HeyGen) reject the flag, so it is omitted. Models that
+  cannot produce audio never receive it.
 - **No server-side campaign persistence.** The campaign lives in the client
   store. Refreshing the page loses job IDs and campaign state even though the
   blobs remain.
